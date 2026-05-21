@@ -15,7 +15,6 @@ Usage (Python REPL):
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import uuid
 from pathlib import Path
@@ -213,8 +212,8 @@ def _render_diff_markdown(report: DiffReport) -> str:
         "",
         "## Summary",
         "",
-        f"| Metric | A | B | Delta |",
-        f"|--------|---|---|-------|",
+        "| Metric | A | B | Delta |",
+        "|--------|---|---|-------|",
         f"| Pass rate | {report.a_pass_rate:.1%} | {report.b_pass_rate:.1%} | "
         f"{delta_sign}{report.pass_rate_delta:.1%} |",
         f"| Regressions | — | — | {len(report.regressions)} |",

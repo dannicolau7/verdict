@@ -19,14 +19,14 @@ v0.2.0 additions (all Optional with None defaults — fully backward-compatible)
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-class FailureMode(str, Enum):
+class FailureMode(StrEnum):
     """Taxonomy of ways an agent can fail an evaluation."""
 
     hallucination = "hallucination"
@@ -41,7 +41,7 @@ class FailureMode(str, Enum):
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class TestPrompt(BaseModel):
@@ -294,7 +294,7 @@ class EvalReport(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def total_tests_matches_judgments(self) -> "EvalReport":
+    def total_tests_matches_judgments(self) -> EvalReport:
         """total_tests must equal the number of Judgment objects."""
         if self.total_tests != len(self.judgments):
             raise ValueError(
@@ -303,7 +303,7 @@ class EvalReport(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def ci_bounds_must_be_ordered(self) -> "EvalReport":
+    def ci_bounds_must_be_ordered(self) -> EvalReport:
         """If both CI bounds are set, low must be <= high."""
         lo, hi = self.pass_rate_ci_low, self.pass_rate_ci_high
         if lo is not None and hi is not None and lo > hi:
@@ -313,7 +313,7 @@ class EvalReport(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def cost_breakdown_shape(self) -> "EvalReport":
+    def cost_breakdown_shape(self) -> EvalReport:
         """If cost_breakdown is set, harness and target must have estimated_cost_usd."""
         cb = self.cost_breakdown
         if cb is None:

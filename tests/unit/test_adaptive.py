@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 from verdict.agents.adaptive_generator import (
     AdaptiveTestGenerator,
     compose_adaptive_probe,
     select_next_pattern,
 )
 from verdict.models.schemas import ExecutionResult, TestPrompt
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

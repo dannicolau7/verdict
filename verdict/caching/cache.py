@@ -21,10 +21,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from enum import Enum
+from enum import StrEnum
 
 
-class CacheMode(str, Enum):
+class CacheMode(StrEnum):
     """Controls adapter interaction with the cache backend."""
 
     OFF = "off"

@@ -20,7 +20,6 @@ from __future__ import annotations
 from verdict.adapters.base import TargetAdapter
 from verdict.models.schemas import ExecutionResult, TestPrompt
 
-
 # ---------------------------------------------------------------------------
 # CrewAI Agent factory (used in D9 crew assembly)
 # ---------------------------------------------------------------------------

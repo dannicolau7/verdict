@@ -2,6 +2,7 @@
 
 > Evaluation infrastructure for AI agents.
 
+[![CI](https://github.com/dannicolau7/verdict/actions/workflows/test.yml/badge.svg)](https://github.com/dannicolau7/verdict/actions/workflows/test.yml)
 ![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![PyPI](https://img.shields.io/pypi/v/verdict-eval)

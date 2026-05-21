@@ -20,14 +20,14 @@ classifiers = [
 packages = [{include = "verdict"}]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<4.0"
+python = ">=3.11,<3.14"
 crewai = "1.14.5"
 langchain-anthropic = "1.4.3"
-pydantic = "^2.13.4"
-pydantic-settings = "^2.14.1"
+pydantic = ">=2.11.9,<2.13"
+pydantic-settings = ">=2.6.0,<3.0"
 python-dotenv = "^1.2.2"
-click = "^8.4.0"
-rich = "^15.0.0"
+click = ">=8.1.7,<8.2.0"
+rich = ">=13.7.0,<15.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.3"
@@ -47,7 +47,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-ignore = []
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

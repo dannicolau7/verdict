@@ -3,8 +3,6 @@
 import asyncio
 import os
 
-import pytest
-
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-smoke-test")
 
 from verdict.adapters.base import TargetAdapter  # noqa: E402

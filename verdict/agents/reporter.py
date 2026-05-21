@@ -17,7 +17,6 @@ Output files:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import uuid
@@ -114,10 +113,6 @@ def _format_critical_failures(
     for j in report.judgments:
         p = prompt_map.get(j.prompt_id)
         if p and p.severity == "critical" and not j.passed:
-            response_excerpt = (
-                j.metadata.get("response_excerpt", "")
-                or "[response not available]"
-            )
             failures.append(
                 f"ID: {j.prompt_id}\n"
                 f"Category: {p.category}\n"

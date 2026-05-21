@@ -179,7 +179,7 @@ def eval_cmd(
             adaptive_results = asyncio.run(execute_test_suite(adaptive_prompts, adapter))
             prompts = list(prompts) + adaptive_prompts
             results = list(results) + adaptive_results
-            console.print(f"  [green]✓[/green] Adaptive probes executed.")
+            console.print("  [green]✓[/green] Adaptive probes executed.")
         else:
             console.print("  [yellow]No adaptive probes selected (pattern library exhausted or empty).[/yellow]")
 
