@@ -125,7 +125,7 @@ def test_calibration_critical_failures_detected(calibration_data, calibration_ju
             )
 
     assert not missed, (
-        f"Critical failures missed by judge:\n  " + "\n  ".join(missed)
+        "Critical failures missed by judge:\n  " + "\n  ".join(missed)
     )
 
 
