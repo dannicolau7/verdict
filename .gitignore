@@ -42,6 +42,9 @@ coverage.xml
 reports/*.json
 reports/*.md
 
+# Verdict harness cache (may contain LLM responses — do NOT commit)
+.verdict_cache/
+
 # IDE
 .vscode/
 .idea/
