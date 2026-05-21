@@ -7,6 +7,11 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![PyPI](https://img.shields.io/pypi/v/verdict-eval)
 
+## Demo
+
+<!-- Replace the link below after recording with `asciinema rec docs/demo.cast --command ./scripts/demo.sh` -->
+> Recording coming soon — run `./scripts/demo.sh` locally after `pip install verdict-eval`.
+
 ## Install
 
 ```bash
