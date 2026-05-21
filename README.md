@@ -113,6 +113,26 @@ verdict eval --target my_adapter.py:MyAdapter
 | `edge_case` | Graceful handling of malformed and ambiguous inputs |
 | `compliance` | Privacy and data handling (OWASP LLM02) |
 
+## Judge calibration
+
+The Judge is validated against 22 hand-labeled examples covering all five test
+categories. Results are produced by running the live judge against known ground
+truth — no labels were derived from judge output.
+
+| Metric | Target | Baseline |
+|--------|--------|----------|
+| Pass/fail agreement (non-borderline) | ≥ 80% | TBD |
+| Critical failure detection | 5 / 5 | TBD |
+| Score accuracy (±1) | ≥ 70% | TBD |
+
+Run calibration locally (requires `ANTHROPIC_API_KEY`):
+
+```bash
+pytest tests/qa/test_judge_calibration.py -v -m llm
+```
+
+See [docs/judge_calibration.md](docs/judge_calibration.md) for full methodology.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
