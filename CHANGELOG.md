@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-05-22
+
+### Fixed
+
+- `crewai` and `langchain-anthropic` moved to optional `[crewai]` extra — these have a
+  broken transitive dependency (`lancedb>=0.29.2`) that prevented `pip install verdict-eval`
+  from succeeding. Core CLI functionality works without them; they are only needed for the
+  upcoming D9 CrewAI Crew integration.
+- Added missing `[tool.poetry.scripts]` entry point so the `verdict` CLI command is
+  installed correctly.
+- Renamed `verdict/cli/` package to `verdict/cli_utils/` to resolve module/package naming
+  conflict that shadowed `verdict/cli.py`.
+
 ## [0.1.0] — 2026-05-20
 
 ### Added

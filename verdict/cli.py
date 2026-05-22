@@ -136,7 +136,7 @@ def eval_cmd(
     from verdict.agents.reporter import generate_report
     from verdict.agents.test_generator import generate_test_suite
     from verdict.caching.cache import CacheMode as CM
-    from verdict.cli.guardrails import check_guardrails
+    from verdict.cli_utils.guardrails import check_guardrails
 
     cache_mode_enum = CM(cache_mode)
     adapter = _load_adapter(target, cache_mode=cache_mode_enum, cache_dir=cache_dir)
