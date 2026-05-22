@@ -109,7 +109,7 @@ def compute_run_costs(
 
     harness_entry: dict = {
         **harness_breakdown,
-        "subtotal_usd": round(harness_total_cost, 6) if harness_cost_known else None,
+        "estimated_cost_usd": round(harness_total_cost, 6) if harness_cost_known else None,
     }
 
     target_entry: dict = {
