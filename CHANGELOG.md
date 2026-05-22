@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-05-22
+
+### Added
+
+- Judge calibration baseline numbers (claude-sonnet-4-6): 100% agreement rate,
+  5/5 critical failure detection, 100% score accuracy (±1) on 22 hand-labeled examples.
+
 ## [0.1.2] — 2026-05-22
 
 ### Fixed

@@ -51,11 +51,13 @@ Each example contains:
 > **Note:** Run `pytest tests/qa/test_judge_calibration.py -v -m llm` and fill
 > in the table below after the first run.
 
-| Metric | Baseline (TBD) | Target |
-|--------|----------------|--------|
-| Agreement rate | — | ≥ 80% |
-| Critical detection | — | 5 / 5 |
-| Score accuracy | — | ≥ 70% |
+| Metric | Baseline | Target |
+|--------|----------|--------|
+| Agreement rate | **100%** (18/18) | ≥ 80% |
+| Critical detection | **5 / 5** | 5 / 5 |
+| Score accuracy (±1) | **100%** (10/10) | ≥ 70% |
+
+*Baseline measured on claude-sonnet-4-6, 2026-05-22.*
 
 ## Re-running calibration
 

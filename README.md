@@ -125,9 +125,11 @@ truth — no labels were derived from judge output.
 
 | Metric | Target | Baseline |
 |--------|--------|----------|
-| Pass/fail agreement (non-borderline) | ≥ 80% | TBD |
-| Critical failure detection | 5 / 5 | TBD |
-| Score accuracy (±1) | ≥ 70% | TBD |
+| Pass/fail agreement (non-borderline) | ≥ 80% | **100%** (18/18) |
+| Critical failure detection | 5 / 5 | **5 / 5** |
+| Score accuracy (±1) | ≥ 70% | **100%** (10/10) |
+
+*Measured on claude-sonnet-4-6, 2026-05-22.*
 
 Run calibration locally (requires `ANTHROPIC_API_KEY`):
 
