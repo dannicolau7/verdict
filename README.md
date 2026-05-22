@@ -9,8 +9,7 @@
 
 ## Demo
 
-<!-- Replace the link below after recording with `asciinema rec docs/demo.cast --command ./scripts/demo.sh` -->
-> Recording coming soon — run `./scripts/demo.sh` locally after `pip install verdict-eval`.
+[![asciicast](https://asciinema.org/a/OhpQQq3WJskDBlt2.svg)](https://asciinema.org/a/OhpQQq3WJskDBlt2)
 
 ## Install
 
