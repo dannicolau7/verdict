@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-05-22
+
+### Fixed
+
+- `verdict eval` crashed with `ValidationError` at the report generation step due to
+  `cost_breakdown['harness']` missing `estimated_cost_usd` (calculator was writing
+  `subtotal_usd`). Field renamed to match the schema validator.
+- Demo script (`scripts/demo.sh`) no longer requires `pv` — typing animation is now
+  pure bash.
+
 ## [0.1.1] — 2026-05-22
 
 ### Fixed
