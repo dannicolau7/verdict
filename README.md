@@ -9,7 +9,7 @@
 
 ## Demo
 
-[![asciicast](https://asciinema.org/a/OhpQQq3WJskDBlt2.svg)](https://asciinema.org/a/OhpQQq3WJskDBlt2)
+[![asciicast](https://asciinema.org/a/BFmNpSVbKRKk1FGI.svg)](https://asciinema.org/a/BFmNpSVbKRKk1FGI)
 
 ## Install
 
