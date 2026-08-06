@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-08-06
+
+### Added
+
+- CrewAI crew assembly (D9): all four agents (TestGenerator, Executor, Judge, Reporter)
+  wired into `EvalCrew` in `verdict/crews/eval_crew.py`. CLI `eval` command now routes
+  through `EvalCrew.kickoff()` with per-stage progress callbacks.
+- 18 unit tests for `EvalCrew` pipeline; no LLM calls, all stages patched.
+
+### Changed
+
+- `scripts/demo.sh` pause timings tightened for faster demo playback.
+
 ## [0.1.3] — 2026-05-22
 
 ### Added
