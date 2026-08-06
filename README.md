@@ -72,6 +72,46 @@ Analyze judge and target consistency across historical evaluation runs.
 verdict flakiness --target my-system --min-runs 5 --reports-dir ./reports
 ```
 
+### `verdict compliance`
+
+Map an eval report to **HIPAA Security Rule** and **NIST AI RMF** controls, producing
+machine-readable and human-readable compliance artifacts.
+
+```bash
+# After running verdict eval, point at the JSON report:
+verdict compliance --report ./reports/eval_abc123.json --output-dir ./compliance
+```
+
+Outputs two files:
+
+| File | Description |
+|------|-------------|
+| `compliance_{run_id}.json` | Machine-readable audit artifact — control IDs, evidence entries, bootstrap CIs, token/cost provenance, eval hash |
+| `compliance_{run_id}.md` | Human-readable control-by-control report |
+
+**Frameworks covered:** 5 HIPAA Security Rule controls (general, administrative, and
+technical safeguards) and 8 NIST AI RMF controls (MAP, MEASURE, MANAGE functions) — a
+curated subset that maps naturally to eval outcomes.
+
+**What makes this statistically grounded:**
+- Each control's evidence entry includes a per-source 95% bootstrap CI
+- Controls aggregated from multiple categories carry a combined CI
+- Flakiness-detected prompts reduce the confidence rating for affected controls
+- Token/cost provenance is recorded in `provenance` for full audit traceability
+
+**Python API:**
+```python
+from verdict.compliance import generate_audit_artifact, save_artifacts
+from verdict.models.schemas import EvalReport
+import json
+
+report = EvalReport(**json.loads(Path("eval_report.json").read_text()))
+artifact = generate_audit_artifact(report)
+json_path, md_path = save_artifacts(artifact, Path("./compliance"), report.run_id)
+```
+
+See `examples/compliance_example.py` for a runnable demo with synthetic data.
+
 ## Adaptive mode
 
 When `--adaptive` is enabled, Verdict runs a second pass of follow-up probes selected

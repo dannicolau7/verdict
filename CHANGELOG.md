@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-06
+
+### Added
+
+- **Compliance evidence layer** (`verdict/compliance/`) — maps eval results to 13
+  curated controls across HIPAA Security Rule (5) and NIST AI RMF (8, spanning MAP,
+  MEASURE, and MANAGE functions).
+- Control mapping is evidence-driven: each eval category and failure mode routes to the
+  controls it directly provides evidence for or against.
+- Bootstrap 95% CIs computed per-control (not just run-wide), with evidence strength
+  classification (high/moderate/low/insufficient) and flakiness-based confidence weighting.
+- Token/cost provenance and a stable eval hash recorded in every artifact for audit
+  traceability.
+- Two output formats: `compliance_{run_id}.json` (machine-readable audit artifact) and
+  `compliance_{run_id}.md` (human-readable control-by-control report).
+- New CLI command `verdict compliance --report <path> [--output-dir <dir>]`.
+- 46 unit tests for the compliance module; no LLM calls.
+- `examples/compliance_example.py` — runnable demo with synthetic data.
+- README section documenting the compliance layer and Python API.
+
 ## [0.1.4] — 2026-08-06
 
 ### Added

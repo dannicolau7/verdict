@@ -1,9 +1,10 @@
 """Verdict CLI — evaluation infrastructure for AI agents.
 
 Commands:
-    verdict eval       Run a full evaluation against a target adapter.
-    verdict diff       Compare two adapter versions on the same test suite.
-    verdict flakiness  Analyze historical run variance for a target system.
+    verdict eval        Run a full evaluation against a target adapter.
+    verdict diff        Compare two adapter versions on the same test suite.
+    verdict flakiness   Analyze historical run variance for a target system.
+    verdict compliance  Map an eval report to HIPAA + NIST AI RMF controls.
 
 Adapter spec format:
     Built-in shorthand:  simple_rag  (maps to verdict.adapters.simple_rag.SimpleRAGAdapter)
@@ -350,6 +351,85 @@ def flakiness_cmd(
         f"\nOverall judge consistency: "
         f"{result.get('judge_flakiness', {}).get('overall_judge_consistency', 'N/A')}"
     )
+
+
+@main.command("compliance")
+@click.option(
+    "--report",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to an EvalReport JSON file produced by `verdict eval`.",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    default="./compliance",
+    show_default=True,
+    help="Directory where compliance artifacts are written.",
+)
+def compliance_cmd(report: str, output_dir: str) -> None:
+    """Map an eval report to HIPAA Security Rule and NIST AI RMF controls.
+
+    Reads the JSON report at --report and produces two files in --output-dir:
+
+    \b
+      compliance_{run_id}.json  machine-readable audit artifact
+      compliance_{run_id}.md    human-readable control-by-control report
+    """
+    import json as _json
+
+    from verdict.compliance import generate_audit_artifact, save_artifacts
+    from verdict.models.schemas import EvalReport
+
+    try:
+        raw = _json.loads(Path(report).read_text(encoding="utf-8"))
+        eval_report = EvalReport(**raw)
+    except Exception as exc:
+        console.print(f"[red]Failed to load report:[/red] {exc}")
+        raise SystemExit(1) from exc
+
+    console.print(f"[bold]Mapping[/bold] {eval_report.total_tests} judgments to compliance controls…")
+
+    artifact = generate_audit_artifact(eval_report)
+    json_path, md_path = save_artifacts(artifact, Path(output_dir), eval_report.run_id)
+
+    # Summary table
+    controls = artifact["controls"]
+    statuses = [c["overall_status"] for c in controls]
+    n_pass = statuses.count("pass")
+    n_partial = statuses.count("partial")
+    n_fail = statuses.count("fail")
+    n_insuf = statuses.count("insufficient_data")
+
+    table = Table(title="Compliance Control Summary", header_style="bold cyan")
+    table.add_column("Control", width=30)
+    table.add_column("Framework", width=22)
+    table.add_column("Status", width=14)
+    table.add_column("Pass Rate", width=10)
+    table.add_column("Confidence", width=11)
+
+    status_colors = {"pass": "green", "partial": "yellow", "fail": "red", "insufficient_data": "dim"}
+    for ctrl in controls:
+        color = status_colors.get(ctrl["overall_status"], "white")
+        pr_str = f"{ctrl['overall_pass_rate']:.1%}" if ctrl["overall_pass_rate"] is not None else "—"
+        table.add_row(
+            ctrl["id"],
+            ctrl["framework"],
+            f"[{color}]{ctrl['overall_status'].upper()}[/{color}]",
+            pr_str,
+            ctrl["confidence"].capitalize(),
+        )
+
+    console.print(table)
+    console.print(
+        f"\n[bold]Results:[/bold] "
+        f"[green]{n_pass} pass[/green]  "
+        f"[yellow]{n_partial} partial[/yellow]  "
+        f"[red]{n_fail} fail[/red]  "
+        f"[dim]{n_insuf} insufficient[/dim]"
+    )
+    console.print(f"\n[green]✓[/green] JSON artifact → {json_path}")
+    console.print(f"[green]✓[/green] Markdown report → {md_path}")
 
 
 if __name__ == "__main__":
