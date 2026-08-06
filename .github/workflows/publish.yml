@@ -3,6 +3,12 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to build and publish (e.g. v0.2.0)"
+        required: true
+        default: "main"
 
 jobs:
   build:
@@ -11,6 +17,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
