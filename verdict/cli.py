@@ -88,32 +88,65 @@ def main(debug: bool) -> None:
 
 
 @main.command("eval")
-@click.option("--target", required=True, help="Adapter spec: 'simple_rag' or 'path/to/file.py:ClassName'")
+@click.option(
+    "--target", required=True, help="Adapter spec: 'simple_rag' or 'path/to/file.py:ClassName'"
+)
 @click.option("--num-per-category", default=5, show_default=True, help="Prompts per category.")
 @click.option("--categories", multiple=True, help="Specific categories (repeat flag for multiple).")
 @click.option("--output-dir", type=click.Path(), default=None, help="Report output directory.")
 @click.option("--run-id", default=None, help="Custom run ID.")
 @click.option("--model", default=None, help="Override LLM model for all agents.")
 # R3 — bootstrap CI
-@click.option("--bootstrap-iterations", default=1000, show_default=True,
-              help="Bootstrap CI iterations (0 to disable).")
+@click.option(
+    "--bootstrap-iterations",
+    default=1000,
+    show_default=True,
+    help="Bootstrap CI iterations (0 to disable).",
+)
 # R5 — guardrails
-@click.option("--max-cost-usd", type=float, default=None,
-              help="Fail if total cost exceeds this USD amount.")
-@click.option("--max-total-latency-seconds", type=float, default=None,
-              help="Fail if total run latency exceeds this in seconds.")
-@click.option("--fail-on-pass-rate-below", type=float, default=None,
-              help="Fail if pass_rate < threshold (0.0–1.0).")
-@click.option("--fail-on-ci-low-below", type=float, default=None,
-              help="Fail if CI lower bound < threshold. Requires --bootstrap-iterations > 0.")
+@click.option(
+    "--max-cost-usd", type=float, default=None, help="Fail if total cost exceeds this USD amount."
+)
+@click.option(
+    "--max-total-latency-seconds",
+    type=float,
+    default=None,
+    help="Fail if total run latency exceeds this in seconds.",
+)
+@click.option(
+    "--fail-on-pass-rate-below",
+    type=float,
+    default=None,
+    help="Fail if pass_rate < threshold (0.0–1.0).",
+)
+@click.option(
+    "--fail-on-ci-low-below",
+    type=float,
+    default=None,
+    help="Fail if CI lower bound < threshold. Requires --bootstrap-iterations > 0.",
+)
 # R4 — caching
-@click.option("--cache-mode", type=click.Choice(["off", "record", "replay", "update"]),
-              default="off", show_default=True, help="Response caching mode.")
-@click.option("--cache-dir", type=click.Path(), default=".verdict_cache",
-              show_default=True, help="Directory for cache files.")
+@click.option(
+    "--cache-mode",
+    type=click.Choice(["off", "record", "replay", "update"]),
+    default="off",
+    show_default=True,
+    help="Response caching mode.",
+)
+@click.option(
+    "--cache-dir",
+    type=click.Path(),
+    default=".verdict_cache",
+    show_default=True,
+    help="Directory for cache files.",
+)
 # R9 — adaptive probes
-@click.option("--adaptive", is_flag=True, default=False,
-              help="Run adaptive follow-up probes based on initial responses.")
+@click.option(
+    "--adaptive",
+    is_flag=True,
+    default=False,
+    help="Run adaptive follow-up probes based on initial responses.",
+)
 def eval_cmd(
     target: str,
     num_per_category: int,
@@ -131,12 +164,9 @@ def eval_cmd(
     adaptive: bool,
 ) -> None:
     """Run a full evaluation against a target adapter."""
-    from verdict.agents.executor import execute_test_suite
-    from verdict.agents.judge import judge_results
-    from verdict.agents.reporter import generate_report
-    from verdict.agents.test_generator import generate_test_suite
     from verdict.caching.cache import CacheMode as CM
     from verdict.cli_utils.guardrails import check_guardrails
+    from verdict.crews.eval_crew import EvalCrew
 
     cache_mode_enum = CM(cache_mode)
     adapter = _load_adapter(target, cache_mode=cache_mode_enum, cache_dir=cache_dir)
@@ -147,81 +177,45 @@ def eval_cmd(
     console.print(f"  Prompts:   {num_per_category} per category")
     console.print(f"  Cache:     {cache_mode}")
 
-    # 1. Generate
-    console.print("\n[bold]Generating test prompts…[/bold]")
-    prompts = generate_test_suite(
+    _STAGE_HEADERS = {
+        "generate": "\n[bold]Generating test prompts…[/bold]",
+        "execute": "\n[bold]Executing against target…[/bold]",
+        "adaptive": "\n[bold]Generating adaptive follow-up probes…[/bold]",
+        "judge": "\n[bold]Judging results…[/bold]",
+        "report": "\n[bold]Generating report…[/bold]",
+    }
+    _current_stage: list[str] = []
+
+    def _on_progress(stage: str, detail: str) -> None:
+        if not _current_stage or _current_stage[-1] != stage:
+            _current_stage.clear()
+            _current_stage.append(stage)
+            if stage in _STAGE_HEADERS:
+                console.print(_STAGE_HEADERS[stage])
+        console.print(f"  [green]✓[/green] {detail}")
+
+    crew = EvalCrew(
+        adapter=adapter,
         num_per_category=num_per_category,
         categories=cat_list,
         model=model,
-    )
-    console.print(f"  [green]✓[/green] {len(prompts)} prompts generated.")
-
-    # 2. Execute
-    console.print("\n[bold]Executing against target…[/bold]")
-    results = asyncio.run(execute_test_suite(prompts, adapter))
-    errors = sum(1 for r in results if r.error)
-    console.print(f"  [green]✓[/green] {len(results)} responses received ({errors} errors).")
-
-    # 2b. Adaptive follow-up probes (R9, optional)
-    if adaptive:
-        from verdict.agents.adaptive_generator import AdaptiveTestGenerator
-
-        console.print("\n[bold]Generating adaptive follow-up probes…[/bold]")
-        gen = AdaptiveTestGenerator()
-        adaptive_prompts = []
-        for result in results:
-            probe = gen.next_probe(result)
-            if probe is not None:
-                adaptive_prompts.append(probe)
-
-        if adaptive_prompts:
-            console.print(f"  [cyan]→[/cyan] {len(adaptive_prompts)} adaptive probes queued.")
-            adaptive_results = asyncio.run(execute_test_suite(adaptive_prompts, adapter))
-            prompts = list(prompts) + adaptive_prompts
-            results = list(results) + adaptive_results
-            console.print("  [green]✓[/green] Adaptive probes executed.")
-        else:
-            console.print("  [yellow]No adaptive probes selected (pattern library exhausted or empty).[/yellow]")
-
-    # 3. Judge
-    console.print("\n[bold]Judging results…[/bold]")
-    judgments = judge_results(prompts, results, judge_models=[model] if model else None)
-    passed = sum(1 for j in judgments if j.passed)
-    console.print(f"  [green]✓[/green] {passed}/{len(judgments)} passed.")
-
-    # 4. Report
-    console.print("\n[bold]Generating report…[/bold]")
-    out_path = Path(output_dir) if output_dir else None
-    json_path, md_path = generate_report(
-        judgments=judgments,
-        prompts=prompts,
-        target_name=getattr(adapter, "name", target),
         run_id=run_id,
-        output_dir=out_path,
-        model=model,
-        target_version=getattr(adapter, "version", None),
-        metadata={"execution_results": results},
+        output_dir=Path(output_dir) if output_dir else None,
         bootstrap_iterations=bootstrap_iterations,
+        adaptive=adaptive,
     )
-    console.print(f"  [green]✓[/green] JSON: {json_path}")
-    console.print(f"  [green]✓[/green] Markdown: {md_path}")
+    ev = crew.kickoff(on_progress=_on_progress)
 
-    # 5. Cache stats
+    # Cache stats
     stats = adapter.cache_stats
     if stats["hits"] + stats["misses"] + stats["writes"] > 0:
         console.print(
             f"\n  Cache: {stats['hits']} hits, {stats['misses']} misses, {stats['writes']} writes"
         )
 
-    # 6. Guardrails
-    # Load the EvalReport to get CI values
-    import json as _json
-    report_data = _json.loads(json_path.read_text())
-    from verdict.models.schemas import EvalReport
-    report = EvalReport(**report_data)
-
+    # Guardrails
     passed_all, breaches = check_guardrails(
-        report,
+        ev.report,
         max_cost_usd=max_cost_usd,
         max_total_latency_seconds=max_total_latency_seconds,
         fail_on_pass_rate_below=fail_on_pass_rate_below,
@@ -231,17 +225,17 @@ def eval_cmd(
         console.print("\n[bold red]Guardrail breaches:[/bold red]")
         for msg in breaches:
             console.print(f"  [red]✗[/red] {msg}")
-        console.print(
-            "\n[yellow]Report saved. Exiting with code 2 (guardrail breach).[/yellow]"
-        )
+        console.print("\n[yellow]Report saved. Exiting with code 2 (guardrail breach).[/yellow]")
         sys.exit(2)
     else:
         ci_str = ""
-        if report.pass_rate_ci_low is not None:
-            ci_str = f" (95% CI: {report.pass_rate_ci_low:.1%}–{report.pass_rate_ci_high:.1%})"
+        if ev.report.pass_rate_ci_low is not None:
+            ci_str = (
+                f" (95% CI: {ev.report.pass_rate_ci_low:.1%}–{ev.report.pass_rate_ci_high:.1%})"
+            )
         console.print(
             f"\n[bold green]✓ Evaluation complete.[/bold green] "
-            f"Pass rate: {report.pass_rate:.1%}{ci_str}"
+            f"Pass rate: {ev.report.pass_rate:.1%}{ci_str}"
         )
 
 
@@ -257,8 +251,12 @@ def eval_cmd(
 @click.option("--categories", multiple=True)
 @click.option("--output-dir", type=click.Path(), default=None)
 @click.option("--run-id", default=None)
-@click.option("--cache-mode", type=click.Choice(["off", "record", "replay", "update"]),
-              default="off", show_default=True)
+@click.option(
+    "--cache-mode",
+    type=click.Choice(["off", "record", "replay", "update"]),
+    default="off",
+    show_default=True,
+)
 @click.option("--cache-dir", type=click.Path(), default=".verdict_cache", show_default=True)
 def diff_cmd(
     target_a: str,
@@ -301,7 +299,9 @@ def diff_cmd(
 
 
 @main.command("flakiness")
-@click.option("--target", required=True, help="Target system name (matches EvalReport.target_system).")
+@click.option(
+    "--target", required=True, help="Target system name (matches EvalReport.target_system)."
+)
 @click.option("--min-runs", default=3, show_default=True, help="Minimum historical runs required.")
 @click.option("--reports-dir", type=click.Path(), default="./reports", show_default=True)
 @click.option("--output", type=click.Path(), default=None, help="Save flakiness JSON to file.")
