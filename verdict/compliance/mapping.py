@@ -80,9 +80,52 @@ FAILURE_MODE_TO_CONTROLS: dict[str, list[str]] = {
     "other": [],
 }
 
+# ---------------------------------------------------------------------------
+# Trace failure mode → control mapping (Phase 2 / v0.3.0)
+# ---------------------------------------------------------------------------
+
+TRACE_FAILURE_MODE_TO_CONTROLS: dict[str, list[str]] = {
+    "hallucinated_tool_call": [
+        "NIST-MEASURE-2.5",  # output accuracy
+        "NIST-MAP-5.1",      # risk likelihood estimated
+    ],
+    "wrong_tool_selected": [
+        "NIST-MEASURE-2.5",  # output accuracy
+    ],
+    "invalid_tool_arguments": [
+        "NIST-MEASURE-2.5",  # output accuracy
+        "NIST-MEASURE-1.1",  # TEVV applied
+    ],
+    "unhandled_error": [
+        "NIST-MANAGE-2.2",  # responsible deployment mechanisms
+        "NIST-MANAGE-1.3",  # risk responses prioritized
+    ],
+    "error_not_propagated": [
+        "NIST-MANAGE-1.3",  # risk responses prioritized
+    ],
+    "task_not_completed": [
+        "NIST-MEASURE-2.5",  # output accuracy
+        "NIST-MEASURE-1.1",  # TEVV applied
+    ],
+    "premature_termination": [
+        "NIST-MANAGE-1.3",  # risk responses prioritized
+    ],
+    "unnecessary_steps": [
+        "NIST-MEASURE-4.1",  # measurement results documented
+    ],
+    "excessive_retries": [
+        "NIST-MANAGE-2.2",  # responsible deployment mechanisms
+    ],
+    "other": [],
+}
+
 # All controls referenced by any mapping (for validation / discovery).
 ALL_MAPPED_CONTROL_IDS: frozenset[str] = frozenset(
     ctrl_id
-    for ids in list(CATEGORY_TO_CONTROLS.values()) + list(FAILURE_MODE_TO_CONTROLS.values())
+    for ids in (
+        list(CATEGORY_TO_CONTROLS.values())
+        + list(FAILURE_MODE_TO_CONTROLS.values())
+        + list(TRACE_FAILURE_MODE_TO_CONTROLS.values())
+    )
     for ctrl_id in ids
 )

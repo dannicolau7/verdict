@@ -432,5 +432,133 @@ def compliance_cmd(report: str, output_dir: str) -> None:
     console.print(f"[green]✓[/green] Markdown report → {md_path}")
 
 
+@main.command("trace-eval")
+@click.option(
+    "--trace",
+    "trace_path",
+    type=click.Path(),
+    default=None,
+    help="Path to a single AgentTrace JSON file.",
+)
+@click.option(
+    "--traces-dir",
+    type=click.Path(),
+    default=None,
+    help="Directory containing AgentTrace JSON files.",
+)
+@click.option(
+    "--agent-name",
+    default=None,
+    help="Agent name override (inferred from traces if omitted).",
+)
+@click.option(
+    "--judge-model",
+    default=None,
+    help="Override judge model for trace evaluation.",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    default="./trace_reports",
+    show_default=True,
+    help="Directory where trace eval reports are written.",
+)
+@click.option("--run-id", default=None, help="Custom run identifier.")
+def trace_eval_cmd(
+    trace_path: str | None,
+    traces_dir: str | None,
+    agent_name: str | None,
+    judge_model: str | None,
+    output_dir: str,
+    run_id: str | None,
+) -> None:
+    """Evaluate agent execution traces against expected behavior.
+
+    Load Verdict-native AgentTrace JSON files, judge each trace with the
+    trace judge LLM, and produce a TraceEvalReport.
+
+    \b
+    Examples:
+        verdict trace-eval --trace my_trace.json
+        verdict trace-eval --traces-dir ./traces/ --output-dir ./reports
+    """
+    import json as _json
+
+    from verdict.adapters.trace_ingestor import load_traces
+    from verdict.agents.trace_judge import judge_traces
+    from verdict.reports.trace_builder import build_trace_eval_markdown, build_trace_eval_report
+
+    if trace_path is None and traces_dir is None:
+        raise click.UsageError("Provide either --trace or --traces-dir.")
+    if trace_path is not None and traces_dir is not None:
+        raise click.UsageError("--trace and --traces-dir are mutually exclusive.")
+
+    source = Path(trace_path) if trace_path else Path(traces_dir)  # type: ignore[arg-type]
+
+    console.rule("[bold blue]Verdict Trace Eval")
+    console.print(f"  Source: [cyan]{source}[/cyan]")
+
+    try:
+        traces = load_traces(source)
+    except (FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]Failed to load traces:[/red] {exc}")
+        raise SystemExit(1) from exc
+
+    resolved_agent = agent_name or (traces[0].agent_name if traces else "unknown")
+    console.print(f"  Agent:  [cyan]{resolved_agent}[/cyan]")
+    console.print(f"  Traces: {len(traces)}\n")
+
+    console.print("[bold]Judging traces…[/bold]")
+    models = [judge_model] if judge_model else None
+    judgments = judge_traces(traces, judge_models=models)
+
+    for j, trace in zip(judgments, traces):
+        status = "[green]PASS[/green]" if j.overall_passed else "[red]FAIL[/red]"
+        fms = ", ".join(fm.value for fm in j.failure_modes) if j.failure_modes else "—"
+        console.print(f"  {status}  {trace.trace_id[:16]}…  {fms}")
+
+    report = build_trace_eval_report(
+        judgments,
+        agent_name=resolved_agent,
+        run_id=run_id,
+    )
+
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / f"trace_eval_{report.run_id[:8]}.json"
+    md_path = out_dir / f"trace_eval_{report.run_id[:8]}.md"
+
+    json_path.write_text(
+        _json.dumps(report.model_dump(mode="json"), indent=2), encoding="utf-8"
+    )
+    md_path.write_text(build_trace_eval_markdown(report), encoding="utf-8")
+
+    # Summary table
+    table = Table(title="Trace Eval Summary", header_style="bold cyan")
+    table.add_column("Trace ID", width=20)
+    table.add_column("Passed", width=8)
+    table.add_column("Score", width=7)
+    table.add_column("Failure Modes", width=35)
+
+    for j in report.trace_judgments:
+        color = "green" if j.overall_passed else "red"
+        status_str = f"[{color}]{'YES' if j.overall_passed else 'NO'}[/{color}]"
+        score_str = str(j.overall_score) if j.overall_score is not None else "—"
+        fms = ", ".join(fm.value for fm in j.failure_modes)[:33] or "—"
+        table.add_row(j.trace_id[:18] + "…", status_str, score_str, fms)
+
+    console.print(table)
+
+    ci_str = ""
+    if report.pass_rate_ci_low is not None:
+        ci_str = f" (95% CI: {report.pass_rate_ci_low:.1%}–{report.pass_rate_ci_high:.1%})"
+    console.print(
+        f"\n[bold]Pass rate:[/bold] {report.pass_rate:.1%}{ci_str}"
+        f"  ({sum(1 for j in judgments if j.overall_passed)}/{report.total_traces} passing)"
+    )
+    console.print(f"\n[green]✓[/green] JSON report → {json_path}")
+    console.print(f"[green]✓[/green] Markdown report → {md_path}")
+
+
 if __name__ == "__main__":
     main()

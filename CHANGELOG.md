@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-06
+
+### Added
+
+- **Agent-trace evaluation** (`verdict/models/trace_schemas.py`, `verdict/agents/trace_judge.py`) —
+  ingests structured step-by-step agent execution logs and judges them at both the per-step and
+  overall-trace level. Supports `llm_call`, `tool_call`, `tool_result`, `observation`, and
+  `final_answer` step types.
+- **`AgentTrace` schema** — canonical Verdict-native JSON format for recording agent runs, with
+  full step metadata (tool name/arguments/result, LLM input/output, latency, error).
+- **`TraceFailureMode` taxonomy** — 10 failure modes covering `wrong_tool_selected`,
+  `invalid_tool_arguments`, `unhandled_error`, `premature_termination`, `unnecessary_steps`,
+  `task_not_completed`, `hallucinated_tool_call`, `error_not_propagated`, `excessive_retries`,
+  and `other`.
+- **Trace judge** (`verdict/agents/trace_judge.py`) — injection-resistant judge using `<trace_step>`
+  XML delimiters; supports single-judge and multi-judge consensus (majority vote + averaged score).
+- **Trace ingestor** (`verdict/adapters/trace_ingestor.py`) — `load_trace()` / `load_traces()`
+  for single files, JSON arrays, and directories of `*.json` trace files.
+- **Deterministic report builder** (`verdict/reports/trace_builder.py`) — `build_trace_eval_report()`
+  computes pass rate, failure mode counts, and bootstrap 95% CI; `build_trace_eval_markdown()`
+  renders human-readable output.
+- **New CLI command** `verdict trace-eval` with `--trace`/`--traces-dir`, `--judge-model`,
+  `--output-dir`, and `--run-id` options. Outputs `trace_eval_{id}.json` + `trace_eval_{id}.md`.
+- **Compliance extension** — `TRACE_FAILURE_MODE_TO_CONTROLS` mapping routes all 10 trace failure
+  modes to the relevant HIPAA and NIST AI RMF controls in `verdict/compliance/mapping.py`.
+- **Trace rubrics** (`verdict/evals/trace_rubrics.py`) — `OVERALL_RUBRIC` (1-5 graded) and
+  `STEP_RUBRIC` (binary pass/fail) used by the trace judge prompt.
+- 67 unit tests across four new test modules; no LLM calls.
+- `examples/eval_agent_trace.py` — offline demo with synthetic traces (runs without API key).
+
 ## [0.2.0] — 2026-08-06
 
 ### Added
