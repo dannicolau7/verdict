@@ -22,9 +22,12 @@ from verdict.compliance.evidence import (
     build_control_entries,
 )
 from verdict.compliance.frameworks import CONTROLS, get_control
-from verdict.compliance.mapping import ALL_MAPPED_CONTROL_IDS, CATEGORY_TO_CONTROLS, FAILURE_MODE_TO_CONTROLS
+from verdict.compliance.mapping import (
+    ALL_MAPPED_CONTROL_IDS,
+    CATEGORY_TO_CONTROLS,
+    FAILURE_MODE_TO_CONTROLS,
+)
 from verdict.models.schemas import EvalReport, Judgment
-
 
 # ---------------------------------------------------------------------------
 # Helpers
