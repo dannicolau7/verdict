@@ -13,7 +13,11 @@ from collections import defaultdict
 from verdict.models.schemas import EvalReport
 
 from .frameworks import CONTROLS
-from .mapping import CATEGORY_TO_CONTROLS, FAILURE_MODE_TO_CONTROLS
+from .mapping import (
+    CATEGORY_TO_CONTROLS,
+    FAILURE_MODE_TO_CONTROLS,
+    TRACE_FAILURE_MODE_TO_CONTROLS,
+)
 
 
 def _bootstrap_from_flags(
@@ -66,13 +70,74 @@ def _confidence(strength: str, flaky: bool) -> str:
     return "low"
 
 
-def build_control_entries(report: EvalReport) -> dict[str, list[dict]]:
-    """Return {control_id: [evidence_entry, ...]} from an EvalReport.
+def _build_trace_control_entries(report) -> dict[str, list[dict]]:  # type: ignore[no-untyped-def]
+    """Build control evidence from a TraceEvalReport.
 
-    Each evidence entry represents one eval category's contribution to a control.
-    A control may receive entries from multiple categories (e.g. NIST-MEASURE-2.7
-    gets entries from both 'injection' and 'compliance').
+    Each observed failure mode routes to its mapped controls. The overall
+    trace pass rate provides aggregate evidence for correctness-related controls.
     """
+    entries: dict[str, list[dict]] = defaultdict(list)
+
+    n: int = report.total_traces
+    if n == 0:
+        return {}
+
+    k: int = sum(1 for j in report.trace_judgments if j.overall_passed)
+    flags = [1 if j.overall_passed else 0 for j in report.trace_judgments]
+    ci_low, ci_high = _bootstrap_from_flags(flags)
+    strength = _evidence_strength(n, ci_low, ci_high)
+
+    # Aggregate evidence entry covering overall trace accuracy
+    aggregate_entry: dict = {
+        "source": f"trace_eval:{report.agent_name}",
+        "tests_run": n,
+        "tests_passed": k,
+        "pass_rate": round(k / n, 4) if n else 0.0,
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "evidence_strength": strength,
+        "flakiness_flag": False,
+        "notable_failure_modes": sorted(report.failure_mode_counts.keys()),
+    }
+
+    # Always add aggregate evidence to correctness/TEVV controls
+    base_controls = {"NIST-MEASURE-2.5", "NIST-MEASURE-1.1", "NIST-MEASURE-4.1", "NIST-MAP-5.1"}
+    for ctrl_id in base_controls:
+        entries[ctrl_id].append(dict(aggregate_entry))
+
+    # Add per-failure-mode control evidence
+    for fm_str, count in report.failure_mode_counts.items():
+        if count == 0:
+            continue
+        ctrl_ids = TRACE_FAILURE_MODE_TO_CONTROLS.get(fm_str, [])
+        fm_entry: dict = {
+            "source": f"trace_failure_mode:{fm_str}",
+            "tests_run": n,
+            "tests_passed": k,
+            "pass_rate": round(k / n, 4) if n else 0.0,
+            "ci_low": ci_low,
+            "ci_high": ci_high,
+            "evidence_strength": strength,
+            "flakiness_flag": False,
+            "notable_failure_modes": [fm_str],
+        }
+        for ctrl_id in ctrl_ids:
+            if not any(e["source"] == fm_entry["source"] for e in entries[ctrl_id]):
+                entries[ctrl_id].append(dict(fm_entry))
+
+    return dict(entries)
+
+
+def build_control_entries(report: EvalReport) -> dict[str, list[dict]]:
+    """Return {control_id: [evidence_entry, ...]} from an EvalReport or TraceEvalReport.
+
+    Each evidence entry represents one eval category's or failure mode's contribution
+    to a control. A control may receive entries from multiple sources.
+    """
+    from verdict.models.trace_schemas import TraceEvalReport
+    if isinstance(report, TraceEvalReport):
+        return _build_trace_control_entries(report)
+
     # Extract flaky prompt IDs from flakiness_report (if populated)
     flaky_prompt_ids: set[str] = set()
     if report.flakiness_report:

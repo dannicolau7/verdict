@@ -111,7 +111,8 @@ TRACE_FAILURE_MODE_TO_CONTROLS: dict[str, list[str]] = {
         "NIST-MANAGE-1.3",  # risk responses prioritized
     ],
     "unnecessary_steps": [
-        "NIST-MEASURE-4.1",  # measurement results documented
+        "NIST-MEASURE-2.5",  # output accuracy — redundant steps indicate poor efficiency
+        "NIST-MEASURE-1.1",  # TEVV applied — test coverage reveals step bloat
     ],
     "excessive_retries": [
         "NIST-MANAGE-2.2",  # responsible deployment mechanisms

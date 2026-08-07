@@ -20,6 +20,11 @@ def _eval_hash(report: EvalReport) -> str:
     return "sha256:" + hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
+def _eval_hash_trace(report) -> str:  # type: ignore[no-untyped-def]
+    content = f"{report.run_id}:{report.total_traces}:{report.pass_rate}"
+    return "sha256:" + hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
 def _build_provenance(report: EvalReport) -> dict:
     prov: dict = {
         "verdict_version": report.verdict_version or "unknown",
@@ -35,26 +40,48 @@ def _build_provenance(report: EvalReport) -> dict:
     return prov
 
 
+def _build_provenance_trace(report) -> dict:  # type: ignore[no-untyped-def]
+    return {
+        "verdict_version": report.verdict_version or "unknown",
+        "eval_hash": _eval_hash_trace(report),
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "total_tokens": 0,
+        "total_cost_usd": 0.0,
+    }
+
+
 def generate_audit_artifact(report: EvalReport) -> dict:
-    """Build the machine-readable JSON audit artifact from an EvalReport.
+    """Build the machine-readable JSON audit artifact from an EvalReport or TraceEvalReport.
 
     The artifact contains:
     - eval_run:   identity fields from the source report
     - provenance: token/cost accounting and eval hash for reproducibility
     - controls:   per-control evidence, pass rates, bootstrap CIs, and status
     """
-    entries_by_control = build_control_entries(report)
+    from verdict.models.trace_schemas import TraceEvalReport
 
+    entries_by_control = build_control_entries(report)
     controls_out: list[dict] = [
         aggregate_control(ctrl_id, entries_by_control.get(ctrl_id, []))
         for ctrl_id in CONTROLS
     ]
 
-    return {
-        "artifact_id": str(uuid.uuid4()),
-        "schema_version": "1.0",
-        "generated_at": datetime.now(UTC).isoformat(),
-        "eval_run": {
+    if isinstance(report, TraceEvalReport):
+        eval_run = {
+            "run_id": report.run_id,
+            "target_system": report.agent_name,
+            "target_version": None,
+            "total_tests": report.total_traces,
+            "pass_rate": report.pass_rate,
+            "pass_rate_ci_low": report.pass_rate_ci_low,
+            "pass_rate_ci_high": report.pass_rate_ci_high,
+            "bootstrap_iterations": report.bootstrap_iterations,
+            "timestamp": report.timestamp.isoformat(),
+        }
+        provenance = _build_provenance_trace(report)
+    else:
+        eval_run = {
             "run_id": report.run_id,
             "target_system": report.target_system,
             "target_version": report.target_version,
@@ -64,8 +91,15 @@ def generate_audit_artifact(report: EvalReport) -> dict:
             "pass_rate_ci_high": report.pass_rate_ci_high,
             "bootstrap_iterations": report.bootstrap_iterations,
             "timestamp": report.timestamp.isoformat(),
-        },
-        "provenance": _build_provenance(report),
+        }
+        provenance = _build_provenance(report)
+
+    return {
+        "artifact_id": str(uuid.uuid4()),
+        "schema_version": "1.0",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "eval_run": eval_run,
+        "provenance": provenance,
         "controls": controls_out,
     }
 

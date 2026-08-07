@@ -34,8 +34,22 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+_CLOSE_TAG = "</trace_step>"
+_CLOSE_TAG_ESCAPED = "<\\/trace_step>"
+
+
+def _sanitise(s: str) -> str:
+    """Prevent user-controlled strings from closing the <trace_step> XML wrapper."""
+    return s.replace(_CLOSE_TAG, _CLOSE_TAG_ESCAPED)
+
+
 def _format_steps(steps: list[TraceStep]) -> str:
-    """Render steps as injection-safe XML-tagged blocks."""
+    """Render steps as injection-safe XML-tagged blocks.
+
+    User-controlled fields (tool_result, llm_input, llm_output, error) are
+    sanitised so that a payload containing </trace_step> cannot escape the
+    wrapper and appear as free text in the prompt.
+    """
     parts: list[str] = []
     for step in steps:
         lines = [f"<trace_step id={step.step_id} type={step.step_type}>"]
@@ -44,16 +58,16 @@ def _format_steps(steps: list[TraceStep]) -> str:
         if step.tool_arguments:
             lines.append(f"  arguments: {json.dumps(step.tool_arguments)}")
         if step.tool_result is not None:
-            lines.append(f"  result: {step.tool_result}")
+            lines.append(f"  result: {_sanitise(step.tool_result)}")
         if step.llm_input:
-            lines.append(f"  llm_input: {step.llm_input}")
+            lines.append(f"  llm_input: {_sanitise(step.llm_input)}")
         if step.llm_output:
-            lines.append(f"  llm_output: {step.llm_output}")
+            lines.append(f"  llm_output: {_sanitise(step.llm_output)}")
         if step.error:
-            lines.append(f"  error: {step.error}")
+            lines.append(f"  error: {_sanitise(step.error)}")
         if step.latency_ms is not None:
             lines.append(f"  latency_ms: {step.latency_ms}")
-        lines.append("</trace_step>")
+        lines.append(_CLOSE_TAG)
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
@@ -98,6 +112,7 @@ def _judge_one_trace(
         message = client.messages.create(
             model=model,
             max_tokens=2048,
+            temperature=0.1,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}],
         )

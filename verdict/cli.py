@@ -375,23 +375,42 @@ def compliance_cmd(report: str, output_dir: str) -> None:
     \b
       compliance_{run_id}.json  machine-readable audit artifact
       compliance_{run_id}.md    human-readable control-by-control report
+
+    Accepts both EvalReport (from `verdict eval`) and TraceEvalReport
+    (from `verdict trace-eval`).
     """
     import json as _json
 
     from verdict.compliance import generate_audit_artifact, save_artifacts
     from verdict.models.schemas import EvalReport
+    from verdict.models.trace_schemas import TraceEvalReport
 
+    raw = _json.loads(Path(report).read_text(encoding="utf-8"))
+
+    eval_report: EvalReport | TraceEvalReport
     try:
-        raw = _json.loads(Path(report).read_text(encoding="utf-8"))
         eval_report = EvalReport(**raw)
-    except Exception as exc:
-        console.print(f"[red]Failed to load report:[/red] {exc}")
-        raise SystemExit(1) from exc
+        is_trace = False
+    except Exception:
+        try:
+            eval_report = TraceEvalReport(**raw)
+            is_trace = True
+        except Exception as exc:
+            console.print(f"[red]Failed to load report as EvalReport or TraceEvalReport:[/red] {exc}")
+            raise SystemExit(1) from exc
 
-    console.print(f"[bold]Mapping[/bold] {eval_report.total_tests} judgments to compliance controls…")
+    if is_trace:
+        assert isinstance(eval_report, TraceEvalReport)
+        console.print(
+            f"[bold]Mapping[/bold] {eval_report.total_traces} trace judgments to compliance controls…"
+        )
+    else:
+        assert isinstance(eval_report, EvalReport)
+        console.print(f"[bold]Mapping[/bold] {eval_report.total_tests} judgments to compliance controls…")
 
     artifact = generate_audit_artifact(eval_report)
-    json_path, md_path = save_artifacts(artifact, Path(output_dir), eval_report.run_id)
+    run_id_val = eval_report.run_id
+    json_path, md_path = save_artifacts(artifact, Path(output_dir), run_id_val)
 
     # Summary table
     controls = artifact["controls"]
