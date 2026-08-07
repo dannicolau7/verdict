@@ -3,6 +3,7 @@ import type { EvalReport, RunListItem } from '../types/api'
 import * as api from '../api/client'
 import { ReportView } from '../components/eval/ReportView'
 import { Spinner } from '../components/ui/Spinner'
+import { downloadReportJson, downloadReportMarkdown } from '../utils/export'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -94,6 +95,40 @@ function LabelEditor({
 // RunCard
 // ---------------------------------------------------------------------------
 
+function ExportButton({
+  runId,
+  format,
+}: {
+  runId: string
+  format: 'json' | 'md'
+}) {
+  const [busy, setBusy] = useState(false)
+
+  const handle = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setBusy(true)
+    try {
+      const report = await api.fetchRun(runId)
+      format === 'json' ? downloadReportJson(report) : downloadReportMarkdown(report)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handle}
+      disabled={busy}
+      title={`Download ${format.toUpperCase()}`}
+      className="flex items-center gap-1 text-xs font-medium text-slate hover:text-ink
+        border border-line rounded px-1.5 py-0.5 hover:bg-cloud transition-colors
+        disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+    >
+      {busy ? <Spinner size={10} className="text-brand" /> : `↓ ${format.toUpperCase()}`}
+    </button>
+  )
+}
+
 function RunCard({
   item,
   onView,
@@ -126,6 +161,10 @@ function RunCard({
         />
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="hidden sm:flex items-center gap-1.5">
+          <ExportButton runId={item.run_id} format="json" />
+          <ExportButton runId={item.run_id} format="md" />
+        </div>
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${passRateBadge(item.pass_rate)}`}>
           {pct}%
         </span>
@@ -145,6 +184,68 @@ function RunCard({
 }
 
 // ---------------------------------------------------------------------------
+// Filter bar
+// ---------------------------------------------------------------------------
+
+type PassFilter = 'all' | 'pass' | 'caution' | 'fail'
+
+const PASS_OPTIONS: { value: PassFilter; label: string }[] = [
+  { value: 'all',     label: 'Any' },
+  { value: 'pass',    label: '≥ 80%' },
+  { value: 'caution', label: '60–79%' },
+  { value: 'fail',    label: '< 60%' },
+]
+
+function matchesPassFilter(rate: number, f: PassFilter): boolean {
+  if (f === 'all') return true
+  if (f === 'pass') return rate >= 0.8
+  if (f === 'caution') return rate >= 0.6 && rate < 0.8
+  return rate < 0.6
+}
+
+function FilterBar({
+  query, onQuery,
+  passFilter, onPassFilter,
+  total, shown,
+}: {
+  query: string; onQuery: (v: string) => void
+  passFilter: PassFilter; onPassFilter: (v: PassFilter) => void
+  total: number; shown: number
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row gap-3">
+      <input
+        type="search"
+        value={query}
+        onChange={e => onQuery(e.target.value)}
+        placeholder="Search by label or run ID…"
+        className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink
+          placeholder:text-slate/40
+          focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+      />
+      <div className="flex rounded-lg border border-line overflow-hidden flex-shrink-0" role="group">
+        {PASS_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => onPassFilter(opt.value)}
+            className={`px-3 py-2 text-xs font-medium transition-colors focus-visible:ring-2
+              focus-visible:ring-inset focus-visible:ring-brand focus-visible:outline-none
+              ${passFilter === opt.value ? 'bg-brand text-white' : 'bg-white text-slate hover:text-ink hover:bg-cloud'}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      {shown < total && (
+        <span className="self-center text-xs text-slate whitespace-nowrap">
+          {shown} of {total}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -154,6 +255,8 @@ export function History() {
   const [selected, setSelected] = useState<EvalReport | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [passFilter, setPassFilter] = useState<PassFilter>('all')
 
   useEffect(() => {
     api.fetchRuns()
@@ -177,6 +280,16 @@ export function History() {
   const handleLabelSaved = (runId: string, label: string | null) => {
     setRuns(prev => prev?.map(r => r.run_id === runId ? { ...r, label } : r) ?? prev)
   }
+
+  const filtered = runs?.filter(r => {
+    if (!matchesPassFilter(r.pass_rate, passFilter)) return false
+    if (!query.trim()) return true
+    const q = query.toLowerCase()
+    return (
+      r.label?.toLowerCase().includes(q) ||
+      r.run_id.toLowerCase().startsWith(q)
+    )
+  }) ?? []
 
   if (selected) {
     return (
@@ -222,17 +335,37 @@ export function History() {
       )}
 
       {runs && runs.length > 0 && (
-        <div className="space-y-3">
-          {runs.map(item => (
-            <RunCard
-              key={item.run_id}
-              item={item}
-              onView={() => handleView(item.run_id)}
-              loading={loadingId === item.run_id}
-              onLabelSaved={label => handleLabelSaved(item.run_id, label)}
-            />
-          ))}
-        </div>
+        <>
+          <FilterBar
+            query={query} onQuery={setQuery}
+            passFilter={passFilter} onPassFilter={setPassFilter}
+            total={runs.length} shown={filtered.length}
+          />
+
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-sm text-slate">
+              No runs match the current filter.
+              <button
+                onClick={() => { setQuery(''); setPassFilter('all') }}
+                className="block mx-auto mt-2 text-brand hover:underline focus-visible:outline-none"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map(item => (
+                <RunCard
+                  key={item.run_id}
+                  item={item}
+                  onView={() => handleView(item.run_id)}
+                  loading={loadingId === item.run_id}
+                  onLabelSaved={label => handleLabelSaved(item.run_id, label)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

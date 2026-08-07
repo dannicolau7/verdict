@@ -68,9 +68,10 @@ function RunSelect({
           const ts = new Date(r.timestamp).toLocaleString('en-US', {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
           })
+          const prefix = r.label ? `[${r.label}] ` : ''
           return (
             <option key={r.run_id} value={r.run_id}>
-              {r.run_id.slice(0, 8)} · {r.target_system} · {Math.round(r.pass_rate * 100)}% · {ts}
+              {prefix}{r.run_id.slice(0, 8)} · {r.target_system} · {Math.round(r.pass_rate * 100)}% · {ts}
             </option>
           )
         })}
