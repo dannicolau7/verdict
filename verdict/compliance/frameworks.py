@@ -82,7 +82,7 @@ CONTROLS: dict[str, dict] = {
         "id": "NIST-MAP-2.3",
         "framework": "NIST AI RMF",
         "function": "MAP",
-        "title": "Scientific findings applied to risk identification",
+        "title": "Scientific findings and current knowledge are applied in risk identification.",
         "description": (
             "Scientific findings and current knowledge are applied in risk identification. "
             "Systematic adversarial testing — including the 23-pattern adaptive attack library "
@@ -96,7 +96,7 @@ CONTROLS: dict[str, dict] = {
         "id": "NIST-MAP-5.1",
         "framework": "NIST AI RMF",
         "function": "MAP",
-        "title": "Likelihood and impact of identified AI risks",
+        "title": "Likelihood and impact of each identified AI risk is estimated, including those defined by applicable laws and regulations.",
         "description": (
             "Likelihood and impact of each identified AI risk is estimated. Pass rates, "
             "critical failure counts, and per-category breakdowns provide quantified estimates "
@@ -109,12 +109,12 @@ CONTROLS: dict[str, dict] = {
         "id": "NIST-MEASURE-1.1",
         "framework": "NIST AI RMF",
         "function": "MEASURE",
-        "title": "TEVV methods and metrics identified and applied",
+        "title": "Approaches and metrics for measurement of AI risk are identified and applied.",
         "description": (
-            "Appropriate Test, Evaluation, Validation, and Verification (TEVV) methods and "
-            "metrics are identified and applied. Running a structured test suite with clearly "
-            "defined categories, pass/fail rubrics, and a calibrated LLM judge directly "
-            "satisfies TEVV requirements for AI systems."
+            "Approaches and metrics for measurement of AI risk are identified and applied "
+            "(TEVV — Test, Evaluation, Validation, and Verification). Running a structured "
+            "test suite with clearly defined categories, pass/fail rubrics, and a calibrated "
+            "LLM judge provides evidence relevant to TEVV requirements for AI systems."
         ),
         "reference": "NIST AI RMF 1.0 — MEASURE 1.1",
     },
@@ -122,12 +122,12 @@ CONTROLS: dict[str, dict] = {
         "id": "NIST-MEASURE-2.5",
         "framework": "NIST AI RMF",
         "function": "MEASURE",
-        "title": "AI system output accuracy evaluated",
+        "title": "The AI system to be deployed is demonstrated to be valid and reliable through tools and techniques such as external audits, red-teaming, or assessments by domain experts.",
         "description": (
-            "The AI system outputs are reviewed for accuracy and quality on a regular basis. "
-            "Correctness and edge_case test categories directly measure output accuracy; the "
-            "judge's scoring with documented rubrics provides a reproducible quality signal "
-            "suitable for ongoing monitoring."
+            "The AI system to be deployed is demonstrated to be valid and reliable. "
+            "Correctness and edge_case test categories provide evidence relevant to output "
+            "validity; the judge's scoring with documented rubrics provides a reproducible "
+            "quality signal suitable for ongoing monitoring against this subcategory."
         ),
         "reference": "NIST AI RMF 1.0 — MEASURE 2.5",
     },
@@ -135,11 +135,11 @@ CONTROLS: dict[str, dict] = {
         "id": "NIST-MEASURE-2.7",
         "framework": "NIST AI RMF",
         "function": "MEASURE",
-        "title": "AI system security and resilience evaluated",
+        "title": "AI system security and resilience – as identified in the MAP function – are evaluated and documented.",
         "description": (
             "AI system security and resilience are evaluated and documented. The injection "
             "and compliance test categories, combined with the 23-pattern adaptive attack "
-            "library, provide direct measurement of the system's resilience to adversarial "
+            "library, provide evidence relevant to the system's resilience against adversarial "
             "inputs, data exfiltration, and regulatory non-compliance."
         ),
         "reference": "NIST AI RMF 1.0 — MEASURE 2.7",
@@ -148,12 +148,13 @@ CONTROLS: dict[str, dict] = {
         "id": "NIST-MEASURE-4.1",
         "framework": "NIST AI RMF",
         "function": "MEASURE",
-        "title": "Measurement results documented",
+        "title": "Measurement approaches for identifying AI risks are connected to deployment context(s) and informed by risk categories identified and prioritized in the MAP function.",
         "description": (
-            "Measurement results are documented. Every Verdict run produces a JSON artifact "
-            "with run_id, timestamp, per-control evidence, confidence intervals, token/cost "
-            "provenance, and an eval hash for reproducibility — satisfying documentation "
-            "requirements for AI risk measurement."
+            "Measurement approaches are connected to deployment context and risk categories. "
+            "Every Verdict run produces a JSON artifact with run_id, timestamp, per-control "
+            "evidence, confidence intervals, token/cost provenance, and an eval hash for "
+            "reproducibility — providing evidence relevant to measurement documentation "
+            "requirements for AI risk."
         ),
         "reference": "NIST AI RMF 1.0 — MEASURE 4.1",
     },
@@ -161,12 +162,12 @@ CONTROLS: dict[str, dict] = {
         "id": "NIST-MANAGE-1.3",
         "framework": "NIST AI RMF",
         "function": "MANAGE",
-        "title": "Risk responses to identified AI risks prioritized",
+        "title": "Responses to the AI risks deemed high priority, as identified by the MAP function, are developed, planned, and documented.",
         "description": (
-            "Responses to identified AI risks are prioritized based on assessment of the "
-            "likelihood and magnitude of each risk. Safety category failures "
-            "(compliance_when_should_refuse) represent the highest-magnitude risks and are "
-            "surfaced as critical_failures in the audit artifact to drive prioritized response."
+            "Responses to high-priority AI risks are developed, planned, and documented. "
+            "Safety category failures (compliance_when_should_refuse) represent the "
+            "highest-magnitude risks and are surfaced as critical_failures in the audit "
+            "artifact, providing evidence relevant to prioritized risk response planning."
         ),
         "reference": "NIST AI RMF 1.0 — MANAGE 1.3",
     },
@@ -174,12 +175,12 @@ CONTROLS: dict[str, dict] = {
         "id": "NIST-MANAGE-2.2",
         "framework": "NIST AI RMF",
         "function": "MANAGE",
-        "title": "Mechanisms to sustain responsible AI deployment",
+        "title": "Mechanisms are in place and applied to sustain the value of deployed AI systems.",
         "description": (
-            "Mechanisms to sustain responsible deployment of the AI system are in place. "
+            "Mechanisms are in place and applied to sustain the value of deployed AI systems. "
             "Continuous evaluation via Verdict — differential testing, flakiness detection, "
-            "adaptive attack composition — provides an operational mechanism for detecting "
-            "regressions and maintaining responsible deployment as the system evolves."
+            "adaptive attack composition — provides evidence relevant to operational mechanisms "
+            "for detecting regressions and maintaining responsible deployment as the system evolves."
         ),
         "reference": "NIST AI RMF 1.0 — MANAGE 2.2",
     },

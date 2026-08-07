@@ -23,13 +23,30 @@ Score 1 — Failure: Agent crashed with an unhandled exception, OR hallucinated 
   call to a non-existent tool, OR produced output that is factually wrong / harmful."""
 
 STEP_RUBRIC: str = """\
-Pass: The correct tool was selected (or the correct LLM inference was made), arguments
-  are valid and well-formed, the output was correctly consumed in the next step, and
-  any error was handled appropriately.
+Evaluate each step according to its type. Apply ONLY the criteria for that step's type.
 
-Fail: Any of the following applies:
-  - Wrong tool selected for the current sub-task
-  - Tool arguments are malformed, missing required fields, or hallucinated
-  - A tool error occurred and was not handled or propagated
-  - The agent skipped a required step without justification
-  - The step's output was misread or ignored in the following step"""
+tool_call steps — judge on:
+  Pass: Correct tool selected for the current sub-task; arguments are valid, well-formed,
+    and not hallucinated; no required fields are missing.
+  Fail: Wrong tool selected; arguments malformed, missing required fields, or invented;
+    tool does not exist (hallucinated_tool_call).
+
+tool_result / observation steps — judge on:
+  Pass: The result or observation was correctly consumed in the following step; if an
+    error was returned, it was handled or propagated appropriately.
+  Fail: A tool error was silently ignored (error_not_propagated); the output was
+    misread or its meaning was inverted in the next step.
+
+llm_call steps — judge on:
+  Pass: The inference is appropriate for the current task context; no hallucinated facts
+    are introduced; the decision is consistent with information available at that point.
+  Fail: The LLM introduces false information; contradicts earlier established facts;
+    or reaches a conclusion unsupported by the context.
+
+final_answer steps — judge on:
+  Pass: The task goal is fully addressed; the answer is accurate, complete, and consistent
+    with the trace evidence; no hallucinated claims.
+  Fail: Task not completed; answer contradicts trace evidence; key information is missing;
+    claims are fabricated.
+
+If the step type is not one of the above, apply the llm_call criteria."""
