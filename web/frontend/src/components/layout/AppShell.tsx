@@ -2,8 +2,8 @@ import { NavLink } from 'react-router-dom'
 
 const NAV_ITEMS = [
   { to: '/',        label: 'Run evaluation', exact: true },
-  { to: '/diff',    label: 'Diff',           soon: true },
-  { to: '/history', label: 'History',        soon: true },
+  { to: '/diff',    label: 'Diff' },
+  { to: '/history', label: 'History' },
 ]
 
 function VerdictLogo() {
@@ -29,24 +29,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <VerdictLogo />
 
         <div className="flex-1 px-3 py-2 space-y-0.5">
-          {NAV_ITEMS.map(({ to, label, soon, exact }) => (
+          {NAV_ITEMS.map(({ to, label, exact }) => (
             <NavLink
               key={to}
               to={to}
               end={exact}
               className={({ isActive }) =>
-                `flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ` +
+                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ` +
                 (isActive
                   ? 'bg-brand/8 text-brand'
                   : 'text-slate hover:bg-cloud hover:text-ink')
               }
             >
-              <span>{label}</span>
-              {soon && (
-                <span className="text-[10px] font-medium tracking-wide text-slate/60 bg-line rounded px-1.5 py-0.5">
-                  soon
-                </span>
-              )}
+              {label}
             </NavLink>
           ))}
         </div>

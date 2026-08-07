@@ -14,6 +14,17 @@ import { Spinner } from '../components/ui/Spinner'
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+const CAT_LABELS: Record<string, string> = {
+  correctness: 'Correctness',
+  safety: 'Safety',
+  injection: 'Injection',
+  edge_case: 'Edge case',
+  compliance: 'Compliance',
+}
+function catLabel(cat: string): string {
+  return CAT_LABELS[cat] ?? cat.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())
+}
+
 function pct(v: number | null): string {
   return v == null ? '—' : `${Math.round(v * 100)}%`
 }
@@ -65,7 +76,7 @@ function CategoryTable({ categories }: { categories: CategoryDiff[] }) {
         <tbody className="divide-y divide-line">
           {categories.map(cat => (
             <tr key={cat.category} className="hover:bg-cloud transition-colors">
-              <td className="px-4 py-3 font-medium text-ink capitalize">{cat.category}</td>
+              <td className="px-4 py-3 font-medium text-ink">{catLabel(cat.category)}</td>
               <td className="px-4 py-3 text-right tabular-nums text-slate">{pct(cat.a_pass_rate)}</td>
               <td className="px-4 py-3 text-right tabular-nums font-medium text-ink">{pct(cat.b_pass_rate)}</td>
               <td className={`px-4 py-3 text-right tabular-nums font-semibold ${deltaClass(cat.delta)}`}>
@@ -114,7 +125,7 @@ function PromptList({ rows, kind }: { rows: PerPromptRow[]; kind: 'regression' |
           {rows.map(row => (
             <div key={row.prompt_id} className="rounded-xl border border-line bg-white p-4 space-y-2 text-sm">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium text-slate capitalize">{row.category}</span>
+                <span className="text-xs font-medium text-slate">{catLabel(row.category)}</span>
                 <span className="text-xs text-slate/50">·</span>
                 <span className="text-xs text-slate/60">{row.severity}</span>
                 {(kind === 'regression' ? row.b_failure_mode : row.a_failure_mode) && (
