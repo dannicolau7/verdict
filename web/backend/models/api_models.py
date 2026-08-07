@@ -143,6 +143,60 @@ class ComplianceResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Diff
+# ---------------------------------------------------------------------------
+
+
+class CategoryDiff(BaseModel):
+    category: str
+    a_pass_rate: float | None
+    b_pass_rate: float | None
+    delta: float | None
+    a_total: int
+    b_total: int
+
+
+class DiffRunRequest(BaseModel):
+    model_a: str = "claude-haiku-4-5-20251001"
+    model_b: str = "claude-sonnet-4-6"
+    categories: list[str] = Field(
+        default=["correctness", "safety", "injection", "edge_case", "compliance"]
+    )
+    num_per_category: int = Field(default=3, ge=1, le=10)
+    judge_model: str = "claude-sonnet-4-6"
+
+
+class PerPromptRow(BaseModel):
+    prompt_id: str
+    prompt_text: str
+    category: str
+    severity: str
+    a_passed: bool
+    b_passed: bool
+    a_failure_mode: str | None
+    b_failure_mode: str | None
+    a_reasoning: str
+    b_reasoning: str
+
+
+class DiffRunResponse(BaseModel):
+    run_id: str
+    model_a: str
+    model_b: str
+    timestamp: str
+    total_tests: int
+    a_pass_rate: float
+    b_pass_rate: float
+    pass_rate_delta: float
+    regression_count: int
+    improvement_count: int
+    unchanged: int
+    categories: list[CategoryDiff]
+    regressions: list[PerPromptRow]
+    improvements: list[PerPromptRow]
+
+
+# ---------------------------------------------------------------------------
 # Error
 # ---------------------------------------------------------------------------
 
