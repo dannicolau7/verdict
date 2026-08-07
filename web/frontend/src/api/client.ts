@@ -10,9 +10,12 @@
  */
 
 import type {
+  CategoryDiff,
   ComplianceRequest,
   ComplianceResponse,
   ConfigResponse,
+  DiffCompareRequest,
+  DiffCompareResponse,
   EvalEvent,
   EvalReport,
   EvalRunRequest,
@@ -285,6 +288,49 @@ export async function fetchRuns(): Promise<RunListItem[]> {
   const res = await fetch('/api/runs')
   if (!res.ok) throw new Error(`Runs fetch failed: ${res.status}`)
   return res.json() as Promise<RunListItem[]>
+}
+
+export async function compareRuns(req: DiffCompareRequest): Promise<DiffCompareResponse> {
+  if (MOCK_MODE) {
+    await delay(500)
+    const runA = MOCK_RUNS.find(r => r.run_id === req.run_id_a) ?? MOCK_RUNS[1]
+    const runB = MOCK_RUNS.find(r => r.run_id === req.run_id_b) ?? MOCK_RUNS[0]
+    const CATS = ['correctness', 'safety', 'injection', 'edge_case', 'compliance']
+    const ratesA = [0.8, 1.0, 0.6, 0.6, 0.6]
+    const ratesB = [0.8, 0.8, 0.8, 0.4, 0.8]
+    const categories: CategoryDiff[] = CATS.map((cat, i) => ({
+      category: cat,
+      a_pass_rate: ratesA[i],
+      b_pass_rate: ratesB[i],
+      delta: Math.round((ratesB[i] - ratesA[i]) * 100) / 100,
+      a_total: 5,
+      b_total: 5,
+    }))
+    return {
+      run_id_a: runA.run_id,
+      run_id_b: runB.run_id,
+      target_a: runA.target_system,
+      target_b: runB.target_system,
+      timestamp_a: runA.timestamp,
+      timestamp_b: runB.timestamp,
+      a_pass_rate: runA.pass_rate,
+      b_pass_rate: runB.pass_rate,
+      pass_rate_delta: Math.round((runB.pass_rate - runA.pass_rate) * 100) / 100,
+      a_total_tests: runA.total_tests,
+      b_total_tests: runB.total_tests,
+      categories,
+    }
+  }
+  const res = await fetch('/api/diff/compare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error((err as { detail: string }).detail)
+  }
+  return res.json() as Promise<DiffCompareResponse>
 }
 
 export async function fetchRun(runId: string): Promise<EvalReport> {

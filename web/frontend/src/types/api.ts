@@ -55,6 +55,35 @@ export interface RunListItem {
   total_tests: number
 }
 
+export interface DiffCompareRequest {
+  run_id_a: string
+  run_id_b: string
+}
+
+export interface CategoryDiff {
+  category: string
+  a_pass_rate: number | null
+  b_pass_rate: number | null
+  delta: number | null
+  a_total: number
+  b_total: number
+}
+
+export interface DiffCompareResponse {
+  run_id_a: string
+  run_id_b: string
+  target_a: string
+  target_b: string
+  timestamp_a: string
+  timestamp_b: string
+  a_pass_rate: number
+  b_pass_rate: number
+  pass_rate_delta: number
+  a_total_tests: number
+  b_total_tests: number
+  categories: CategoryDiff[]
+}
+
 export interface ComplianceRequest {
   run_id: string
   frameworks: ('hipaa' | 'nist')[]
