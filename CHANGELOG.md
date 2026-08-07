@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-08-07
+
+### Fixed
+
+- **NIST AI RMF subcategory titles** — all 8 titles in `verdict/compliance/frameworks.py` now
+  match verbatim text from NIST AI RMF 1.0 (January 2023); previously all were paraphrases.
+- **Description framing** — NIST control descriptions changed from "directly satisfies/measures"
+  to "provides evidence relevant to" throughout, reflecting the indirect nature of eval evidence.
+- **Trace STEP_RUBRIC** — now differentiates by step type: `tool_call` steps judged on tool
+  selection and argument validity; `tool_result`/`observation` steps on output consumption and
+  error propagation; `llm_call` steps on reasoning quality; `final_answer` steps on task
+  completion and answer accuracy. The previous single rubric applied tool-call criteria to all
+  step types including final answers.
+- **HIPAA controls absent from trace failure mode mappings** — `hallucinated_tool_call` now maps
+  to `HIPAA-164.308(a)(1)(ii)(A)` (risk analysis; fabricated tool calls can invent ePHI);
+  `unhandled_error` now maps to `HIPAA-164.306(a)(2)` (anticipated threats); `wrong_tool_selected`
+  now maps to `NIST-MANAGE-1.3`. Previously `TRACE_FAILURE_MODE_TO_CONTROLS` contained zero HIPAA
+  controls, leaving healthcare agent compliance artifacts with no HIPAA evidence.
+- **XML injection escape** — `_sanitise()` in `trace_judge.py` escapes `</trace_step>` in all
+  user-controlled fields, preventing payload escape from the XML wrapper.
+- **`temperature=0.1`** — now correctly passed to `client.messages.create()` in trace judge;
+  previously the docstring claimed it but the API call used the default (1.0).
+- **Compliance wiring for `TraceEvalReport`** — `verdict compliance` command and
+  `generate_audit_artifact()` now accept both `EvalReport` and `TraceEvalReport`.
+- **`pytest -q` no longer fails without API key** — added `addopts = "-m 'not llm'"` to
+  `[tool.pytest.ini_options]`; `@pytest.mark.llm` tests now require explicit `-m llm` opt-in.
+
 ## [0.3.0] — 2026-08-06
 
 ### Added

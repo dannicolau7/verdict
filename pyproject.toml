@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "verdict-eval"
-version = "0.3.0"
+version = "0.3.1"
 description = "Evaluation infrastructure for AI agents."
 authors = ["Dan Nicolau <dan@dannicolau.com>"]
 license = "MIT"
@@ -59,6 +59,9 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 ignore = ["E501"]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not llm'"
 
 [tool.mypy]
 python_version = "3.11"
