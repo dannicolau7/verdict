@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException
 
 from ..models.api_models import ComplianceRequest, ComplianceResponse
-from .eval import _runs
+from ..store import run_store
 
 router = APIRouter()
 
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.post("/compliance/generate", response_model=ComplianceResponse)
 async def generate_compliance(req: ComplianceRequest) -> ComplianceResponse:
     """Generate HIPAA + NIST AI RMF compliance artifact for a completed run."""
-    run_data = _runs.get(req.run_id)
+    run_data = run_store.get(req.run_id)
     if run_data is None:
         raise HTTPException(status_code=404, detail=f"Run {req.run_id!r} not found.")
 

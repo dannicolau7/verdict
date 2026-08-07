@@ -17,13 +17,10 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from ..models.api_models import EvalRunRequest
+from ..store import run_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# In-memory run store: run_id -> serialized EvalReport dict.
-# Shared with runs.py via import.
-_runs: dict[str, dict] = {}
 
 
 def _sse(payload: dict) -> str:
@@ -88,7 +85,7 @@ async def run_eval(req: EvalRunRequest) -> StreamingResponse:
                 }
             report_dict["category_breakdown"] = norm
 
-            _runs[report.run_id] = report_dict
+            run_store.save(report.run_id, report_dict)
             await queue.put(_sse({"type": "complete", "report": report_dict}))
 
         except Exception as exc:

@@ -62,3 +62,6 @@ reports/*.md
 # Node / frontend
 node_modules/
 web/frontend/dist/
+
+# SQLite run store
+*.db

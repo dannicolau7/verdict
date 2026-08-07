@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .eval import _runs
+from ..store import run_store
 
 router = APIRouter()
 
@@ -46,8 +46,8 @@ class DiffCompareResponse(BaseModel):
 @router.post("/diff/compare", response_model=DiffCompareResponse)
 async def compare_runs(req: DiffCompareRequest) -> DiffCompareResponse:
     """Return an aggregate diff between two historical runs."""
-    run_a = _runs.get(req.run_id_a)
-    run_b = _runs.get(req.run_id_b)
+    run_a = run_store.get(req.run_id_a)
+    run_b = run_store.get(req.run_id_b)
     if run_a is None:
         raise HTTPException(status_code=404, detail=f"Run {req.run_id_a!r} not found.")
     if run_b is None:
