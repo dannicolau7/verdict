@@ -7,6 +7,7 @@ import { FailureModeTags } from '../report/FailureModeTags'
 import { ComplianceTable } from '../report/ComplianceTable'
 import { Spinner } from '../ui/Spinner'
 import * as api from '../../api/client'
+import { downloadReportJson, downloadReportMarkdown } from '../../utils/export'
 
 interface ReportViewProps {
   report: EvalReport
@@ -58,7 +59,7 @@ export function ReportView({ report, onRunAgain }: ReportViewProps) {
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
       {/* Run header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold text-ink">{report.target_system}</h2>
           <p className="text-sm text-slate mt-0.5">
@@ -67,12 +68,34 @@ export function ReportView({ report, onRunAgain }: ReportViewProps) {
             {report.verdict_version && <span className="ml-2 opacity-50">v{report.verdict_version}</span>}
           </p>
         </div>
-        <button
-          onClick={onRunAgain}
-          className="flex-shrink-0 text-sm font-medium text-slate border border-line rounded-lg px-3 py-1.5 hover:bg-white transition-colors focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
-        >
-          Run again
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => downloadReportJson(report)}
+            title="Download JSON"
+            className="text-sm font-medium text-slate border border-line rounded-lg px-3 py-1.5
+              hover:bg-white transition-colors
+              focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+          >
+            ↓ JSON
+          </button>
+          <button
+            onClick={() => downloadReportMarkdown(report)}
+            title="Download Markdown"
+            className="text-sm font-medium text-slate border border-line rounded-lg px-3 py-1.5
+              hover:bg-white transition-colors
+              focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+          >
+            ↓ MD
+          </button>
+          <button
+            onClick={onRunAgain}
+            className="text-sm font-medium text-slate border border-line rounded-lg px-3 py-1.5
+              hover:bg-white transition-colors
+              focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none"
+          >
+            Run again
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
