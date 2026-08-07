@@ -112,6 +112,45 @@ json_path, md_path = save_artifacts(artifact, Path("./compliance"), report.run_i
 
 See `examples/compliance_example.py` for a runnable demo with synthetic data.
 
+## Web UI
+
+Verdict ships a local web interface — a FastAPI backend with a React/TypeScript
+frontend — as an alternative to the CLI.
+
+### Start
+
+```bash
+# 1. Backend (from repo root)
+cd web && uvicorn backend.main:app --reload --port 8000
+
+# 2. Frontend (separate terminal)
+cd web/frontend && npm install && npm run dev
+```
+
+Open **http://localhost:5173**. The API docs are at **http://localhost:8000/docs**.
+
+Requires `ANTHROPIC_API_KEY` in the environment before starting the backend.
+
+### Features
+
+| Page | Status | Description |
+|------|--------|-------------|
+| Run evaluation | ✅ | Configure and launch an eval; streams live progress via SSE |
+| Diff | 🚧 | Compare two adapter versions — coming soon |
+| History | 🚧 | Browse past runs — coming soon |
+
+The **Run evaluation** page exposes all core options: test categories, prompts
+per category, attack mode (standard / adaptive), bootstrap CI, flakiness
+detection, and judge model. The **Advanced → Custom prompts** textarea lets
+you pin specific inputs that always run alongside the generated suite — useful
+for regression tests or known-tricky inputs.
+
+### Custom prompts
+
+Paste one prompt per line in the "Custom prompts" textarea (Advanced options).
+Choose a category to assign to all of them. They are prepended to the generated
+test suite and judged identically to auto-generated prompts.
+
 ## Adaptive mode
 
 When `--adaptive` is enabled, Verdict runs a second pass of follow-up probes selected

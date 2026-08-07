@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { font-size: 15px; }
+
+  body {
+    @apply bg-cloud text-ink antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Reduced-motion: replace spinning animation with a pulse */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-spin-slow { animation: none; opacity: 0.6; }
+    .animate-fade-up   { animation: none; }
+  }
+}
+
+@layer utilities {
+  /* Thin scrollbar on webkit */
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-line rounded-full; }
+}

@@ -101,6 +101,7 @@ class EvalCrew:
         bootstrap_iterations: int = 1000,
         adaptive: bool = False,
         metadata: dict[str, Any] | None = None,
+        pinned_prompts: list[TestPrompt] | None = None,
     ) -> None:
         self.adapter = adapter
         self.num_per_category = num_per_category
@@ -112,6 +113,7 @@ class EvalCrew:
         self.bootstrap_iterations = bootstrap_iterations
         self.adaptive = adaptive
         self.metadata: dict[str, Any] = metadata or {}
+        self.pinned_prompts: list[TestPrompt] = pinned_prompts or []
 
         # Instantiate all four CrewAI Agent objects up front so agent config
         # is centralised here rather than scattered across the CLI.
@@ -218,8 +220,8 @@ class EvalCrew:
 
         # 1. Generate
         _notify("generate", f"Generating {self.num_per_category} prompts per category…")
-        prompts = self._stage_generate()
-        _notify("generate", f"{len(prompts)} prompts generated.")
+        prompts = self.pinned_prompts + self._stage_generate()
+        _notify("generate", f"{len(prompts)} prompts generated ({len(self.pinned_prompts)} pinned).")
 
         # 2. Execute
         _notify("execute", f"Executing {len(prompts)} prompts against target…")

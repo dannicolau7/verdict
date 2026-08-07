@@ -58,3 +58,7 @@ reports/*.md
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Node / frontend
+node_modules/
+web/frontend/dist/
