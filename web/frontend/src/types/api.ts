@@ -53,6 +53,11 @@ export interface RunListItem {
   timestamp: string
   pass_rate: number
   total_tests: number
+  label: string | null
+}
+
+export interface LabelRequest {
+  label: string | null
 }
 
 export interface DiffCompareRequest {

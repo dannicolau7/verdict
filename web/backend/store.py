@@ -28,9 +28,11 @@ CREATE TABLE IF NOT EXISTS runs (
     timestamp     TEXT NOT NULL,
     pass_rate     REAL NOT NULL,
     total_tests   INTEGER NOT NULL,
-    data          TEXT NOT NULL
+    data          TEXT NOT NULL,
+    label         TEXT
 )
 """
+_MIGRATION_ADD_LABEL = "ALTER TABLE runs ADD COLUMN label TEXT"
 
 
 class RunStore:
@@ -53,6 +55,10 @@ class RunStore:
             conn = self._connect()
             try:
                 conn.execute(_DDL)
+                try:
+                    conn.execute(_MIGRATION_ADD_LABEL)
+                except sqlite3.OperationalError:
+                    pass  # column already exists
                 conn.commit()
             finally:
                 conn.close()
@@ -100,13 +106,27 @@ class RunStore:
         try:
             rows = conn.execute(
                 """
-                SELECT run_id, target_system, timestamp, pass_rate, total_tests
+                SELECT run_id, target_system, timestamp, pass_rate, total_tests, label
                 FROM runs ORDER BY timestamp DESC
                 """
             ).fetchall()
         finally:
             conn.close()
         return [dict(r) for r in rows]
+
+    def set_label(self, run_id: str, label: str | None) -> bool:
+        """Set or clear the label for a run. Returns True if the run existed."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                cur = conn.execute(
+                    "UPDATE runs SET label = ? WHERE run_id = ?",
+                    (label or None, run_id),
+                )
+                conn.commit()
+                return cur.rowcount > 0
+            finally:
+                conn.close()
 
 
 run_store = RunStore()

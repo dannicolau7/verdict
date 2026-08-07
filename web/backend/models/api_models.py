@@ -76,6 +76,11 @@ class RunListItem(BaseModel):
     timestamp: str
     pass_rate: float
     total_tests: int
+    label: str | None = None
+
+
+class LabelRequest(BaseModel):
+    label: str | None = None
 
 
 # ---------------------------------------------------------------------------

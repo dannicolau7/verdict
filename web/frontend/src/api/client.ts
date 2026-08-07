@@ -19,6 +19,7 @@ import type {
   EvalEvent,
   EvalReport,
   EvalRunRequest,
+  LabelRequest,
   RunListItem,
 } from '../types/api'
 
@@ -56,9 +57,9 @@ const MOCK_CONFIG: ConfigResponse = {
 }
 
 const MOCK_RUNS: RunListItem[] = [
-  { run_id: MOCK_REPORT.run_id, target_system: 'SimpleRAG', timestamp: MOCK_REPORT.timestamp, pass_rate: 0.72, total_tests: 25 },
-  { run_id: 'prev-run-001',     target_system: 'SimpleRAG', timestamp: new Date(Date.now() - 86_400_000).toISOString(), pass_rate: 0.68, total_tests: 25 },
-  { run_id: 'prev-run-002',     target_system: 'SimpleRAG', timestamp: new Date(Date.now() - 172_800_000).toISOString(), pass_rate: 0.80, total_tests: 25 },
+  { run_id: MOCK_REPORT.run_id, target_system: 'SimpleRAG', timestamp: MOCK_REPORT.timestamp, pass_rate: 0.72, total_tests: 25, label: null },
+  { run_id: 'prev-run-001',     target_system: 'SimpleRAG', timestamp: new Date(Date.now() - 86_400_000).toISOString(), pass_rate: 0.68, total_tests: 25, label: 'before fix' },
+  { run_id: 'prev-run-002',     target_system: 'SimpleRAG', timestamp: new Date(Date.now() - 172_800_000).toISOString(), pass_rate: 0.80, total_tests: 25, label: null },
 ]
 
 const MOCK_COMPLIANCE: ComplianceResponse = {
@@ -278,6 +279,26 @@ export async function generateCompliance(req: ComplianceRequest): Promise<Compli
     throw new Error((err as { detail: string }).detail)
   }
   return res.json() as Promise<ComplianceResponse>
+}
+
+export async function setRunLabel(runId: string, req: LabelRequest): Promise<RunListItem> {
+  if (MOCK_MODE) {
+    await delay(150)
+    const run = MOCK_RUNS.find(r => r.run_id === runId)
+    if (!run) throw new Error(`Run ${runId} not found`)
+    run.label = req.label
+    return { ...run }
+  }
+  const res = await fetch(`/api/runs/${runId}/label`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error((err as { detail: string }).detail)
+  }
+  return res.json() as Promise<RunListItem>
 }
 
 export async function fetchRuns(): Promise<RunListItem[]> {

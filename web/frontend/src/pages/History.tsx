@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { EvalReport, RunListItem } from '../types/api'
 import * as api from '../api/client'
 import { ReportView } from '../components/eval/ReportView'
 import { Spinner } from '../components/ui/Spinner'
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function passRateBadge(rate: number): string {
   if (rate >= 0.8) return 'text-pass bg-pass/10'
@@ -10,14 +14,96 @@ function passRateBadge(rate: number): string {
   return 'text-fail bg-fail/10'
 }
 
+// ---------------------------------------------------------------------------
+// LabelEditor — inline click-to-edit label
+// ---------------------------------------------------------------------------
+
+function LabelEditor({
+  runId,
+  initial,
+  onSaved,
+}: {
+  runId: string
+  initial: string | null
+  onSaved: (label: string | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(initial ?? '')
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const label = value.trim() || null
+      await api.setRunLabel(runId, { label })
+      onSaved(label)
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  const cancel = () => {
+    setValue(initial ?? '')
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5 mt-1" onClick={e => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') save()
+            if (e.key === 'Escape') cancel()
+          }}
+          onBlur={save}
+          maxLength={60}
+          placeholder="Add label…"
+          className="text-xs border border-brand/40 rounded px-2 py-0.5 text-ink w-40
+            focus:outline-none focus:ring-1 focus:ring-brand"
+        />
+        {saving && <Spinner size={12} className="text-brand" />}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); setEditing(true) }}
+      className="mt-1 block text-xs text-left focus:outline-none focus-visible:ring-1
+        focus-visible:ring-brand rounded"
+    >
+      {initial
+        ? <span className="text-brand font-medium">{initial}</span>
+        : <span className="text-slate/40 hover:text-slate transition-colors">+ add label</span>
+      }
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// RunCard
+// ---------------------------------------------------------------------------
+
 function RunCard({
   item,
   onView,
   loading,
+  onLabelSaved,
 }: {
   item: RunListItem
   onView: () => void
   loading: boolean
+  onLabelSaved: (label: string | null) => void
 }) {
   const ts = new Date(item.timestamp).toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -33,6 +119,11 @@ function RunCard({
           <span className="font-mono">{item.run_id.slice(0, 8)}</span>
           {' · '}{ts}
         </p>
+        <LabelEditor
+          runId={item.run_id}
+          initial={item.label}
+          onSaved={onLabelSaved}
+        />
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${passRateBadge(item.pass_rate)}`}>
@@ -52,6 +143,10 @@ function RunCard({
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export function History() {
   const [runs, setRuns] = useState<RunListItem[] | null>(null)
@@ -77,6 +172,10 @@ export function History() {
     } finally {
       setLoadingId(null)
     }
+  }
+
+  const handleLabelSaved = (runId: string, label: string | null) => {
+    setRuns(prev => prev?.map(r => r.run_id === runId ? { ...r, label } : r) ?? prev)
   }
 
   if (selected) {
@@ -130,6 +229,7 @@ export function History() {
               item={item}
               onView={() => handleView(item.run_id)}
               loading={loadingId === item.run_id}
+              onLabelSaved={label => handleLabelSaved(item.run_id, label)}
             />
           ))}
         </div>
