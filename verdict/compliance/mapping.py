@@ -86,19 +86,22 @@ FAILURE_MODE_TO_CONTROLS: dict[str, list[str]] = {
 
 TRACE_FAILURE_MODE_TO_CONTROLS: dict[str, list[str]] = {
     "hallucinated_tool_call": [
-        "NIST-MEASURE-2.5",  # output accuracy
-        "NIST-MAP-5.1",      # risk likelihood estimated
+        "NIST-MEASURE-2.5",            # output accuracy — fabricated call = accuracy failure
+        "NIST-MAP-5.1",                # risk likelihood estimated
+        "HIPAA-164.308(a)(1)(ii)(A)",  # risk analysis — hallucinated calls can fabricate ePHI
     ],
     "wrong_tool_selected": [
         "NIST-MEASURE-2.5",  # output accuracy
+        "NIST-MANAGE-1.3",   # risk responses prioritized — wrong tool = risk not mitigated
     ],
     "invalid_tool_arguments": [
         "NIST-MEASURE-2.5",  # output accuracy
         "NIST-MEASURE-1.1",  # TEVV applied
     ],
     "unhandled_error": [
-        "NIST-MANAGE-2.2",  # responsible deployment mechanisms
-        "NIST-MANAGE-1.3",  # risk responses prioritized
+        "NIST-MANAGE-2.2",             # responsible deployment mechanisms
+        "NIST-MANAGE-1.3",             # risk responses prioritized
+        "HIPAA-164.306(a)(2)",         # anticipated threats — unhandled errors are anticipated failure paths
     ],
     "error_not_propagated": [
         "NIST-MANAGE-1.3",  # risk responses prioritized
