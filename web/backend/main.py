@@ -10,7 +10,7 @@ Start with:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import compliance, config, diff, eval, runs
+from .routers import compliance, config, diff, eval, runs, trace
 
 app = FastAPI(
     title="Verdict API",
@@ -31,6 +31,7 @@ app.include_router(eval.router, prefix="/api")
 app.include_router(compliance.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(diff.router, prefix="/api")
+app.include_router(trace.router, prefix="/api")
 
 
 @app.get("/api/health")

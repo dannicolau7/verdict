@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 const NAV_ITEMS = [
   { to: '/',        label: 'Run evaluation', exact: true },
   { to: '/diff',    label: 'Diff' },
+  { to: '/trace',   label: 'Trace eval' },
   { to: '/history', label: 'History' },
 ]
 
