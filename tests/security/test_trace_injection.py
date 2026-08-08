@@ -9,14 +9,13 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-from verdict.agents.trace_judge import _format_steps, judge_traces
 from verdict.agents.prompts.trace_judge_prompt import (
     SYSTEM_PROMPT,
     TRACE_JUDGMENT_TEMPLATE,
 )
+from verdict.agents.trace_judge import _format_steps, judge_traces
 from verdict.evals.trace_rubrics import OVERALL_RUBRIC, STEP_RUBRIC
 from verdict.models.trace_schemas import AgentTrace, TraceStep
-
 
 # ---------------------------------------------------------------------------
 # Helpers
