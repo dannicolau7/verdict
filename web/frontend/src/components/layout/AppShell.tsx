@@ -27,11 +27,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [backendDown, setBackendDown] = useState(false)
 
   useEffect(() => {
-    const ctrl = new AbortController()
-    fetch('/api/health', { signal: ctrl.signal })
-      .then(r => { if (!r.ok) setBackendDown(true) })
-      .catch(() => setBackendDown(true))
-    return () => ctrl.abort()
+    let timer: ReturnType<typeof setTimeout>
+    const check = () => {
+      fetch('/api/health')
+        .then(r => { setBackendDown(!r.ok) })
+        .catch(() => { setBackendDown(true) })
+        .finally(() => { timer = setTimeout(check, 5000) })
+    }
+    check()
+    return () => clearTimeout(timer)
   }, [])
 
   return (
