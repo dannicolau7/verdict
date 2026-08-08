@@ -20,7 +20,12 @@ export interface EvalReport {
   category_breakdown: Record<string, CategoryStats>
   timestamp: string
   verdict_version: string | null
-  cost_breakdown: Record<string, unknown> | null
+  cost_breakdown: {
+    target?: { input_tokens: number; output_tokens: number; estimated_cost_usd: number | null }
+    harness?: { estimated_cost_usd: number | null }
+    total_cost_usd?: number | null
+    [key: string]: unknown
+  } | null
 }
 
 export interface ConfigResponse {

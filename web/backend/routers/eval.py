@@ -88,6 +88,7 @@ async def run_eval(req: EvalRunRequest) -> StreamingResponse:
 
             # 5. Build report
             import uuid as _uuid
+            from verdict.costs.calculator import compute_run_costs
             emit("report", "Building evaluation report…")
             report = await asyncio.to_thread(
                 build_eval_report,
@@ -98,6 +99,11 @@ async def run_eval(req: EvalRunRequest) -> StreamingResponse:
                 target_version=adapter.version,
                 bootstrap_iterations=1000 if req.enable_ci else 0,
             )
+
+            # Wire cost_breakdown from execution results
+            cost_breakdown = compute_run_costs(results, harness_token_counts={})
+            if isinstance(cost_breakdown.get("target", {}).get("estimated_cost_usd"), (int, float)):
+                report.cost_breakdown = cost_breakdown
 
             report_dict = report.model_dump(mode="json")
 

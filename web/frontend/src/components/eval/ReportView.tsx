@@ -152,6 +152,26 @@ export function ReportView({ report, onRunAgain }: ReportViewProps) {
           <Section title="Failure modes">
             <FailureModeTags failureModes={allFailureModes} />
           </Section>
+
+          {report.cost_breakdown != null && (() => {
+            const cb = report.cost_breakdown
+            const totalTokens = (cb.target?.input_tokens ?? 0) + (cb.target?.output_tokens ?? 0)
+            const totalCost = cb.total_cost_usd
+            return (
+              <Section title="Token usage">
+                <div className="flex items-center gap-6 text-sm text-slate">
+                  <span>
+                    <span className="font-mono text-ink">{totalTokens.toLocaleString()}</span> tokens
+                  </span>
+                  {totalCost != null && (
+                    <span>
+                      est. <span className="font-mono text-ink">${totalCost.toFixed(4)}</span>
+                    </span>
+                  )}
+                </div>
+              </Section>
+            )
+          })()}
         </Tabs.Content>
 
         {/* Compliance tab */}

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 
 const NAV_ITEMS = [
@@ -23,6 +24,16 @@ function VerdictLogo() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const [backendDown, setBackendDown] = useState(false)
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetch('/api/health', { signal: ctrl.signal })
+      .then(r => { if (!r.ok) setBackendDown(true) })
+      .catch(() => setBackendDown(true))
+    return () => ctrl.abort()
+  }, [])
+
   return (
     <div className="flex min-h-screen">
       {/* Left nav */}
@@ -54,6 +65,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Content */}
       <main className="flex-1 min-w-0 bg-cloud">
+        {backendDown && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-sm text-amber-800 flex items-center gap-2">
+            <span>⚠</span>
+            <span>Backend unavailable — start the API server on port 8001 and refresh.</span>
+          </div>
+        )}
         {children}
       </main>
     </div>

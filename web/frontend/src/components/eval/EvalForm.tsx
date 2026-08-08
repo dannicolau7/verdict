@@ -106,6 +106,12 @@ export function EvalForm({ config, onSubmit, loading = false }: EvalFormProps) {
           selected={req.categories}
           onChange={cats => set('categories', cats)}
         />
+        {req.categories.length > 0 && (
+          <p className="text-xs text-slate/60">
+            {totalTests} tests ({req.num_per_category} per category
+            {pinnedCount > 0 ? ` + ${pinnedCount} custom` : ''})
+          </p>
+        )}
       </div>
 
       {/* Advanced */}
