@@ -150,6 +150,28 @@ def _judge_one_trace(
                 except (ValueError, TypeError):
                     sj["score"] = None
 
+        # Guard: error-propagation failure modes require a real error in the step.
+        # Steps where TraceStep.error is None cannot trigger error_not_propagated or
+        # unhandled_error regardless of what the LLM returned.
+        _error_step_ids = {s.step_id for s in trace.steps if s.error is not None}
+        _error_only_modes = {"error_not_propagated", "unhandled_error"}
+        for sj in data.get("step_judgments", []):
+            if sj.get("failure_mode") in _error_only_modes:
+                if sj.get("step_id") not in _error_step_ids:
+                    sj["failure_mode"] = None
+                    sj["passed"] = True
+        # Prune top-level failure_modes list: remove error-propagation modes that no
+        # longer appear in any step judgment (i.e. all occurrences were stripped above).
+        _surviving_step_modes = {
+            sj.get("failure_mode")
+            for sj in data.get("step_judgments", [])
+            if sj.get("failure_mode") is not None
+        }
+        data["failure_modes"] = [
+            fm for fm in data.get("failure_modes", [])
+            if fm not in _error_only_modes or fm in _surviving_step_modes
+        ]
+
         # Sanitize overall_score
         os_ = data.get("overall_score")
         if os_ is not None:

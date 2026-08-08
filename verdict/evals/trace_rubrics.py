@@ -33,9 +33,17 @@ tool_call steps — judge on:
 
 tool_result / observation steps — judge on:
   Pass: The result or observation was correctly consumed in the following step; if an
-    error was returned, it was handled or propagated appropriately.
-  Fail: A tool error was silently ignored (error_not_propagated); the output was
-    misread or its meaning was inverted in the next step.
+    error was returned (error field set, or result contains explicit error text such as
+    exception messages, {"error": "…"}, or HTTP 4xx/5xx status), it was handled or
+    propagated appropriately.
+  Fail — two independent criteria:
+    (1) Output misread: the result's meaning was inverted or misunderstood in the next
+        step. This applies to ALL tool_result steps.
+    (2) Error ignored (error_not_propagated / unhandled_error): ONLY applicable when
+        the step has an error field set OR the result field explicitly contains an error
+        message. A step whose result field contains valid, successful data — even if the
+        agent subsequently makes a wrong decision — MUST NOT receive error_not_propagated
+        or unhandled_error. Assign wrong_tool_selected or task_not_completed instead.
 
 llm_call steps — judge on:
   Pass: The inference is appropriate for the current task context; no hallucinated facts

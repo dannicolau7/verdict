@@ -227,6 +227,127 @@ class TestJudgeTraces:
         assert judgments[0].metadata.get("multi_judge") is True
         assert "agreement_rate" in judgments[0].metadata
 
+    def test_error_not_propagated_stripped_when_step_has_no_error(self):
+        """Fixture (a): LLM incorrectly fires error_not_propagated on clean tool_result
+        steps (no error field). Guard must strip it so it never appears in output."""
+        # Trace mirrors demo-001: two tool_result steps with successful results, no errors.
+        clean_trace = AgentTrace(
+            agent_name="travel-assistant",
+            task="Check weather and find activity.",
+            expected_behavior="Correct tool sequence.",
+            tools_available=["get_weather", "find_indoor_activity"],
+            steps=[
+                TraceStep(step_id=0, step_type="llm_call", llm_output="Checking weather."),
+                TraceStep(step_id=1, step_type="tool_call",
+                          tool_name="get_weather", tool_arguments={"city": "Boston"}),
+                TraceStep(step_id=2, step_type="tool_result",
+                          tool_result='{"condition": "rain", "temp_f": 52}'),  # no error field
+                TraceStep(step_id=3, step_type="tool_call",
+                          tool_name="search_restaurants", tool_arguments={"city": "Boston"}),
+                TraceStep(step_id=4, step_type="tool_result",
+                          tool_result='{"results": ["Giacomos"]}'),  # no error field
+                TraceStep(step_id=5, step_type="final_answer",
+                          llm_output="It will rain. Here are restaurants."),
+            ],
+        )
+        # LLM incorrectly fires error_not_propagated on the clean tool_result steps
+        bad_response = {
+            "overall_passed": False,
+            "overall_score": 1,
+            "reasoning": "The agent failed to propagate errors across tool result steps.",
+            "step_judgments": [
+                {"step_id": 0, "passed": True, "score": None,
+                 "reasoning": "LLM planning step was appropriate.", "failure_mode": None},
+                {"step_id": 1, "passed": True, "score": None,
+                 "reasoning": "Correct tool selected with valid arguments.", "failure_mode": None},
+                {"step_id": 2, "passed": False, "score": None,
+                 "reasoning": "Tool error was silently ignored by the agent.",
+                 "failure_mode": "error_not_propagated"},  # wrong — no error in this step
+                {"step_id": 3, "passed": False, "score": None,
+                 "reasoning": "Wrong tool selected; should have used find_indoor_activity.",
+                 "failure_mode": "wrong_tool_selected"},
+                {"step_id": 4, "passed": False, "score": None,
+                 "reasoning": "Tool error was silently ignored by the agent.",
+                 "failure_mode": "error_not_propagated"},  # wrong — no error in this step
+                {"step_id": 5, "passed": False, "score": None,
+                 "reasoning": "Task not completed; restaurants were returned instead of indoor activities.",
+                 "failure_mode": "task_not_completed"},
+            ],
+            "failure_modes": ["error_not_propagated", "wrong_tool_selected", "task_not_completed"],
+        }
+        mock_client = _make_mock_anthropic(bad_response)
+
+        with (
+            patch("verdict.agents.trace_judge.anthropic.Anthropic", return_value=mock_client),
+            patch("verdict.agents.trace_judge.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.default_judge_model = "claude-sonnet-4-6"
+            mock_settings.return_value.anthropic_api_key.get_secret_value.return_value = "key"
+            judgments = judge_traces([clean_trace])
+
+        j = judgments[0]
+        assert TraceFailureMode.error_not_propagated not in j.failure_modes
+        # wrong_tool_selected and task_not_completed must still be present
+        assert TraceFailureMode.wrong_tool_selected in j.failure_modes
+        assert TraceFailureMode.task_not_completed in j.failure_modes
+        # Steps 2 and 4 should now be marked passed with no failure_mode
+        step_map = {sj.step_id: sj for sj in j.step_judgments}
+        assert step_map[2].passed is True
+        assert step_map[2].failure_mode is None
+        assert step_map[4].passed is True
+        assert step_map[4].failure_mode is None
+
+    def test_error_not_propagated_preserved_when_step_has_error(self):
+        """Fixture (b): step has error field set — error_not_propagated must NOT be stripped."""
+        error_trace = AgentTrace(
+            agent_name="api-agent",
+            task="Fetch data and summarise.",
+            expected_behavior="Handle API errors gracefully.",
+            tools_available=["fetch_data"],
+            steps=[
+                TraceStep(step_id=0, step_type="tool_call",
+                          tool_name="fetch_data", tool_arguments={"id": "123"}),
+                TraceStep(step_id=1, step_type="tool_result",
+                          tool_result="",
+                          error="ConnectionError: timed out"),  # real error
+                TraceStep(step_id=2, step_type="final_answer",
+                          llm_output="Here is your data summary."),  # agent ignored the error
+            ],
+        )
+        error_response = {
+            "overall_passed": False,
+            "overall_score": 1,
+            "reasoning": "Agent ignored a real connection error and gave a fabricated answer.",
+            "step_judgments": [
+                {"step_id": 0, "passed": True, "score": None,
+                 "reasoning": "Correct tool called with valid arguments.", "failure_mode": None},
+                {"step_id": 1, "passed": False, "score": None,
+                 "reasoning": "ConnectionError was present but not propagated to the next step.",
+                 "failure_mode": "error_not_propagated"},  # correct — error field IS set
+                {"step_id": 2, "passed": False, "score": None,
+                 "reasoning": "Final answer fabricated data despite prior connection failure.",
+                 "failure_mode": "task_not_completed"},
+            ],
+            "failure_modes": ["error_not_propagated", "task_not_completed"],
+        }
+        mock_client = _make_mock_anthropic(error_response)
+
+        with (
+            patch("verdict.agents.trace_judge.anthropic.Anthropic", return_value=mock_client),
+            patch("verdict.agents.trace_judge.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.default_judge_model = "claude-sonnet-4-6"
+            mock_settings.return_value.anthropic_api_key.get_secret_value.return_value = "key"
+            judgments = judge_traces([error_trace])
+
+        j = judgments[0]
+        # error_not_propagated must be preserved — the step genuinely had an error
+        assert TraceFailureMode.error_not_propagated in j.failure_modes
+        assert TraceFailureMode.task_not_completed in j.failure_modes
+        step_map = {sj.step_id: sj for sj in j.step_judgments}
+        assert step_map[1].passed is False
+        assert step_map[1].failure_mode == TraceFailureMode.error_not_propagated
+
     def test_batch_preserves_order(self):
         traces = [_trace(task=f"Task {i}.") for i in range(3)]
         mock_client = _make_mock_anthropic(_mock_llm_response(True, 5))
