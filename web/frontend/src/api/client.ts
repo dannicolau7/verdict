@@ -32,7 +32,7 @@ import type {
   TraceStepOut,
 } from '../types/api'
 
-const MOCK_MODE = true // ← the only line to change
+const MOCK_MODE = false // ← the only line to change
 
 // ---------------------------------------------------------------------------
 // Mock data

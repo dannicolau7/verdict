@@ -15,7 +15,7 @@ from .routers import compliance, config, diff, eval, runs, trace
 app = FastAPI(
     title="Verdict API",
     description="Evaluation infrastructure for AI agents.",
-    version="0.3.1",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -36,4 +36,4 @@ app.include_router(trace.router, prefix="/api")
 
 @app.get("/api/health")
 async def health() -> dict:
-    return {"status": "ok", "version": "0.3.1"}
+    return {"status": "ok", "version": "0.4.0"}

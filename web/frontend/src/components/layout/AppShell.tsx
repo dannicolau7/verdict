@@ -48,7 +48,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="px-5 pb-5 mt-auto">
-          <span className="text-xs text-slate/50 font-mono">v0.3.1</span>
+          <span className="text-xs text-slate/50 font-mono">v0.4.0</span>
         </div>
       </nav>
 

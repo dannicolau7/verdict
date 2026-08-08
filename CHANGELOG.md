@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-07
+
+### Added
+
+- **Web platform** (`web/`) — FastAPI backend + React 18 frontend serving four pages:
+  - **Run evaluation** — SSE streaming eval pipeline (generate → execute → judge → report),
+    compliance tab (HIPAA + NIST AI RMF), JSON/MD export.
+  - **Diff** — fresh-run mode (shared test suite, two models, per-prompt regression tables)
+    and historical mode (aggregate compare of two stored runs).
+  - **Trace eval** — upload `AgentTrace` JSON, step-level judge, collapsible step timeline.
+  - **History** — all past runs with label editor, filter bar, per-run export.
+  - SQLite persistence via `RunStore`; runs survive backend restart.
+- **`AnthropicLLMAdapter`** (`verdict/adapters/anthropic_llm.py`) — evaluate any Claude model
+  as the system under test; sends each prompt as a bare user message, returns assistant text
+  with token counts. Default model: `settings.default_executor_model` (Haiku).
+- **Standalone eval pipeline** in web backend (`routers/eval.py`) — uses
+  `generate_test_suite → execute_test_suite → judge_results → build_eval_report` directly,
+  removing the CrewAI dependency from the web API path.
+
+### Fixed
+
+- `CacheMode.off` → `CacheMode.OFF` in `routers/eval.py` and `routers/diff.py`.
+- `CategoryDiff` model missing from `api_models.py` (caused `ImportError` on startup).
+- Nav "soon" badges removed from Diff and History (both pages live).
+- `edge_case` displayed as `Edge_case` in Diff category table (replaced CSS `capitalize`
+  with explicit label map).
+
 ## [0.3.1] — 2026-08-07
 
 ### Fixed

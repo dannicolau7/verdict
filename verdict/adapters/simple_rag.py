@@ -144,8 +144,16 @@ class SimpleRAGAdapter(TargetAdapter):
     """Reference RAG adapter over synthetic Acme Health Systems documents.
 
     Retrieves the top-3 most relevant documents by keyword overlap, then
-    asks Claude Haiku to answer the user's query grounded in those docs.
+    asks a Claude model to answer the user's query grounded in those docs.
+
+    Args:
+        response_model: Anthropic model ID to use for generating responses.
+                        Defaults to settings.default_executor_model (Haiku).
     """
+
+    def __init__(self, response_model: str | None = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._response_model = response_model
 
     @property
     def name(self) -> str:
@@ -153,7 +161,8 @@ class SimpleRAGAdapter(TargetAdapter):
 
     @property
     def version(self) -> str:
-        return "0.1.0"
+        model = self._response_model or "default"
+        return f"0.1.0-{model.split('-')[1] if '-' in model else model}"
 
     async def execute(self, prompt: str, prompt_id: str) -> ExecutionResult:
         """Retrieve relevant docs and call Claude Haiku to answer the prompt.
@@ -177,8 +186,9 @@ class SimpleRAGAdapter(TargetAdapter):
         client = anthropic.Anthropic(
             api_key=settings.anthropic_api_key.get_secret_value()
         )
+        model_id = self._response_model or settings.default_executor_model
         message = client.messages.create(
-            model=settings.default_executor_model,
+            model=model_id,
             max_tokens=1024,
             system=system,
             messages=[{"role": "user", "content": prompt}],
@@ -192,7 +202,6 @@ class SimpleRAGAdapter(TargetAdapter):
             "output_tokens": output_tokens,
             "total_tokens": token_count,
         }
-        model_id = settings.default_executor_model
 
         # Compute cost inline using the pricing table
         from verdict.costs.calculator import compute_cost
