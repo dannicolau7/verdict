@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-23
+
 ### Added
 
 - **`verdict diff --base <ref> --head <ref>`** — "did this change make my agent worse?"
