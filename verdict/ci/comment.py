@@ -1,4 +1,4 @@
-"""Render a DiffResult as a PR comment (Markdown) and as JSON.
+"""Render DiffResult and CalibrationResult as PR comments (Markdown) and JSON.
 
 Comment order: verdict line, gate breaches, regressions, failing cases, summary table,
 then every case in a collapsed <details>. Tables stay narrow so they read on a phone.
@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 
+from verdict.ci.calibrate import CalibrationResult
 from verdict.ci.diff import CaseDiff, DiffResult, SideStats
 
 COMMENT_MARKER = "<!-- verdict-diff -->"
+CALIBRATE_MARKER = "<!-- verdict-calibrate -->"
 _MAX_ROWS = 15
 
 
@@ -146,4 +148,104 @@ def _case_row(c: CaseDiff) -> str:
 def render_json(result: DiffResult) -> str:
     data = result.model_dump(mode="json")
     data["gate"]["breaches"] = [c.name for c in result.gate.breaches]
+    return json.dumps(data, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# verdict calibrate
+# ---------------------------------------------------------------------------
+
+
+def _frac(x: float | None) -> str:
+    return "—" if x is None else f"{x:.0%}"
+
+
+def _label(passed: bool | None) -> str:
+    return "—" if passed is None else ("pass" if passed else "fail")
+
+
+def render_calibration_markdown(result: CalibrationResult) -> str:
+    kappa = f"κ = **{result.kappa:.2f}** (95% CI {result.kappa_ci_low:.2f}–{result.kappa_ci_high:.2f})"
+    if result.n_scored == 0:
+        head = "### ❌ Judge calibration: nothing to score"
+    elif result.min_kappa is None:
+        head = "### ℹ️ Judge calibration"
+    elif result.passed:
+        head = f"### ✅ Judge calibration: κ ≥ {result.min_kappa:g}"
+    else:
+        head = f"### ❌ Judge calibration: κ below {result.min_kappa:g}"
+
+    notes = [f"{result.n_scored} scored"]
+    if result.n_borderline:
+        notes.append(f"{result.n_borderline} borderline excluded")
+    if result.n_judge_errors:
+        notes.append(f"⚠️ {result.n_judge_errors} judge errors excluded")
+    lines = [
+        CALIBRATE_MARKER,
+        head,
+        "",
+        f"{kappa} · agreement {result.agreement:.0%} · {', '.join(notes)}  ",
+        f"Judge `{result.judge_model or 'custom'}` vs `{result.labels_path}`",
+        "",
+    ]
+    if result.n_scored and result.n_scored < 30:
+        lines += [f"_Only {result.n_scored} scored examples: κ is noisy; aim for 50+._", ""]
+
+    dis = result.disagreements
+    if dis:
+        lines += [
+            f"#### Disagreements ({len(dis)})",
+            "",
+            "| Example | Human | Judge | Judge reasoning |",
+            "|---|---|---|---|",
+        ]
+        for i in dis[:_MAX_ROWS]:
+            lines.append(
+                f"| `{_cell(i.id, 30)}` | {_label(i.human_passed)} | {_label(i.judge_passed)} "
+                f"| {_cell(i.judge_reasoning)} |"
+            )
+        if len(dis) > _MAX_ROWS:
+            lines.append(f"| … | | | {len(dis) - _MAX_ROWS} more in the JSON report |")
+        lines.append("")
+
+    c = result.confusion
+    lines += [
+        "#### Confusion matrix",
+        "",
+        "| Human ↓ / Judge → | pass | fail |",
+        "|---|---|---|",
+        f"| **pass** | {c['pass_pass']} | {c['pass_fail']} |",
+        f"| **fail** | {c['fail_pass']} | {c['fail_fail']} |",
+        "",
+        f"Failure detection: precision {_frac(result.fail_precision)}, "
+        f"recall {_frac(result.fail_recall)}",
+        "",
+    ]
+
+    if result.by_category:
+        lines += [
+            "#### By rubric",
+            "",
+            "| Rubric | n | Agree | κ | Fail P / R |",
+            "|---|---|---|---|---|",
+        ]
+        for g in result.by_category:
+            lines.append(
+                f"| {g.name} | {g.n} | {g.agreement:.0%} | {g.kappa:.2f} "
+                f"| {_frac(g.fail_precision)} / {_frac(g.fail_recall)} |"
+            )
+        lines.append("")
+
+    if result.by_failure_mode:
+        lines += ["#### By failure mode", "", "| Mode | n | P | R |", "|---|---|---|---|"]
+        for m in result.by_failure_mode:
+            lines.append(f"| {m.mode} | {m.support} | {_frac(m.precision)} | {_frac(m.recall)} |")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def render_calibration_json(result: CalibrationResult) -> str:
+    data = result.model_dump(mode="json")
+    data["disagreements"] = [i.id for i in result.disagreements]
     return json.dumps(data, indent=2)

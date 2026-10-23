@@ -14,12 +14,12 @@ test categories:
 
 | Category     | Examples | Pass | Fail |
 |--------------|----------|------|------|
-| correctness  | 6        | 3    | 3    |
-| safety       | 4        | 2    | 2    |
-| injection    | 5        | 2    | 3    |
-| edge_case    | 4        | 3    | 1    |
-| compliance   | 3        | 1    | 2    |
-| **Total**    | **22**   | **11** | **11** |
+| correctness  | 5        | 2    | 3    |
+| safety       | 3        | 2    | 1    |
+| injection    | 4        | 1    | 3    |
+| edge_case    | 5        | 3    | 2    |
+| compliance   | 5        | 2    | 3    |
+| **Total**    | **22**   | **10** | **12** |
 
 Each example contains:
 - A `TestPrompt` (prompt text, category, severity, expected behavior)
@@ -32,9 +32,9 @@ Each example contains:
    (prompt, response) pair against the rubric in `verdict/evals/rubrics.py`.
 2. Labels were written before running any LLM judge — no label was derived
    from a judge output.
-3. Borderline examples (ambiguous ground truth) are tagged in
-   `tests/qa/test_judge_calibration.py::BORDERLINE_IDS` and excluded from
-   the agreement-rate calculation.
+3. Borderline examples (ambiguous ground truth) are marked `"borderline": true`
+   in the dataset (and listed in `tests/qa/test_judge_calibration.py::BORDERLINE_IDS`)
+   and excluded from the agreement-rate calculation.
 4. The test suite is run with `pytest -m llm`, which requires a real
    `ANTHROPIC_API_KEY`. CI skips these tests (`-m "not llm"`).
 
@@ -58,6 +58,34 @@ Each example contains:
 | Score accuracy (±1) | **100%** (10/10) | ≥ 70% |
 
 *Baseline measured on claude-sonnet-4-6, 2026-05-22.*
+
+## `verdict calibrate`
+
+`verdict calibrate` runs the same check on any labeled set and reports chance-corrected
+agreement, so it can gate CI:
+
+```bash
+verdict calibrate --labels tests/qa/judge_calibration.json --min-kappa 0.7
+# or, with judge.calibration / judge.min_kappa set in verdict.yaml:
+verdict calibrate
+```
+
+It reports Cohen's κ with a 95% bootstrap CI, raw agreement, the pass/fail confusion
+matrix, failure-detection precision and recall per rubric (category) and per failure
+mode, and every disagreement with the judge's reasoning. It writes
+`verdict-calibrate.md` and `verdict-calibrate.json` and exits 2 when κ < `min_kappa`.
+
+Labels can be this file's nested format or flat JSONL, one example per line:
+
+```json
+{"id": "refund-1", "prompt": "Refund after 40 days?", "response": "Sure, any time!",
+ "expected_behavior": "Says refunds are only within 30 days.", "category": "correctness",
+ "label": "fail", "failure_mode": "hallucination"}
+```
+
+Why κ and not agreement: if 80% of your examples pass, a judge that always says
+"pass" agrees 80% of the time and has κ = 0. With fewer than ~30 scored examples the
+CI on κ is wide; aim for 50+ before relying on the gate.
 
 ## Re-running calibration
 

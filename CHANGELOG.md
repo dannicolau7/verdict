@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`verdict calibrate`** — how well does the judge agree with human labels? Judges a
+  labeled set (flat JSONL, or the nested format of `tests/qa/judge_calibration.json`)
+  and reports Cohen's κ with a 95% bootstrap CI, agreement, the pass/fail confusion
+  matrix, failure-detection precision/recall per rubric and per failure mode, and each
+  disagreement. Reads `judge.calibration`, `judge.model` and `judge.min_kappa` from
+  `verdict.yaml`; writes `verdict-calibrate.md`/`.json`; exits 2 when κ < `min_kappa`.
+- `verdict.stats.agreement`: `cohen_kappa`, `kappa_bootstrap_ci`, `precision_recall`.
+
+### Fixed
+
+- `docs/judge_calibration.md` dataset table: the file has 10 pass / 12 fail examples,
+  not 11 / 11, and the per-category counts were off.
+- Borderline calibration examples are now marked `"borderline": true` in the dataset.
+
 ## [0.5.0] — 2026-10-23
 
 ### Added
