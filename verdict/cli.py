@@ -3,6 +3,7 @@
 Commands:
     verdict eval        Run a full evaluation against a target adapter.
     verdict diff        Did this change make my agent worse? (--base/--head git refs)
+    verdict calibrate   How well does the judge agree with human labels?
     verdict flakiness   Analyze historical run variance for a target system.
     verdict compliance  Map an eval report to HIPAA + NIST AI RMF controls.
 
@@ -421,6 +422,101 @@ def _git_diff(
             console.print(f"  [red]✗[/red] {check.detail}")
         sys.exit(2)
     console.print("[bold green]✓ Gate passed.[/bold green]")
+
+
+# ---------------------------------------------------------------------------
+# verdict calibrate
+# ---------------------------------------------------------------------------
+
+
+@main.command("calibrate")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(),
+    default=None,
+    help="verdict.yaml to read judge.calibration / model / min_kappa from [default: ./verdict.yaml if present].",
+)
+@click.option("--labels", type=click.Path(), default=None, help="Human labels (JSONL or JSON array).")
+@click.option("--judge-model", default=None, help="Judge model (default: config, then settings).")
+@click.option("--min-kappa", type=float, default=None, help="Fail (exit 2) if Cohen's kappa is below this.")
+@click.option(
+    "--json-out", type=click.Path(), default="verdict-calibrate.json", show_default=True
+)
+@click.option("--md-out", type=click.Path(), default="verdict-calibrate.md", show_default=True)
+def calibrate_cmd(
+    config_path: str | None,
+    labels: str | None,
+    judge_model: str | None,
+    min_kappa: float | None,
+    json_out: str,
+    md_out: str,
+) -> None:
+    """How well does the judge agree with human labels?
+
+    \b
+        verdict calibrate                       # uses judge.* from verdict.yaml
+        verdict calibrate --labels evals/human_labels.jsonl --min-kappa 0.7
+
+    Judges every labeled example and reports Cohen's kappa (95% bootstrap CI),
+    agreement, the confusion matrix, failure-detection precision/recall per rubric
+    and per failure mode, and each disagreement. Writes verdict-calibrate.md and
+    verdict-calibrate.json; exits 2 when kappa < min_kappa.
+    """
+    from verdict.ci.calibrate import LabelError, run_calibration
+    from verdict.ci.comment import render_calibration_json, render_calibration_markdown
+    from verdict.ci.config import ConfigError, load_config
+
+    path = config_path or ("verdict.yaml" if Path("verdict.yaml").is_file() else None)
+    if path is not None:
+        try:
+            config = load_config(path)
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+        if labels is None and config.judge.calibration:
+            labels = str(config.base_dir / config.judge.calibration)
+        judge_model = judge_model or config.judge.model
+        if min_kappa is None:
+            min_kappa = config.judge.min_kappa
+    if labels is None:
+        raise click.UsageError("No labels: pass --labels or set judge.calibration in verdict.yaml.")
+    if min_kappa is not None and not -1.0 <= min_kappa <= 1.0:
+        raise click.UsageError("--min-kappa must be between -1 and 1.")
+
+    console.rule("[bold blue]Verdict Calibrate")
+    try:
+        result = run_calibration(
+            labels,
+            judge_model=judge_model,
+            min_kappa=min_kappa,
+            on_progress=lambda msg: console.print(f"  {msg}"),
+        )
+    except LabelError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    for out, text in (
+        (Path(json_out), render_calibration_json(result)),
+        (Path(md_out), render_calibration_markdown(result)),
+    ):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+    console.print(f"[green]✓[/green] JSON: {json_out}")
+    console.print(f"[green]✓[/green] Markdown: {md_out}")
+
+    if result.n_scored == 0:
+        raise click.ClickException("No scorable examples (all borderline or judge errors).")
+    console.print(
+        f"\nkappa {result.kappa:.2f} (95% CI {result.kappa_ci_low:.2f}–{result.kappa_ci_high:.2f}), "
+        f"agreement {result.agreement:.0%}, {len(result.disagreements)} disagreement(s) "
+        f"over {result.n_scored} examples."
+    )
+    if result.n_judge_errors:
+        console.print(f"[yellow]{result.n_judge_errors} judge error(s) excluded.[/yellow]")
+    if min_kappa is not None and not result.passed:
+        console.print(f"[bold red]✗ kappa {result.kappa:.2f} < min_kappa {min_kappa:g}[/bold red]")
+        sys.exit(2)
+    if min_kappa is not None:
+        console.print(f"[bold green]✓ kappa ≥ {min_kappa:g}[/bold green]")
 
 
 # ---------------------------------------------------------------------------

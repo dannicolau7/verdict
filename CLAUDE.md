@@ -29,12 +29,13 @@ tool-definition and model changes, the way CI does for code.
 
 ```
 verdict/
-  cli.py             click entry point: eval | diff | flakiness | compliance | trace-eval
+  cli.py             click entry point: eval | diff | calibrate | flakiness | compliance | trace-eval
   agents/            test_generator, executor, judge (XML-delimited, injection-resistant),
                      reporter (deterministic Python), trace_judge, adaptive_generator
   adapters/          TargetAdapter base (concurrency, timeout, caching) + built-ins
-  ci/                `verdict diff --base/--head`: config, git, suite, side runner, gate, Markdown
-  stats/             bootstrap CI, proportions (Wilson, Fisher exact, bootstrap diff)
+  ci/                `verdict diff --base/--head` and `verdict calibrate`: config, git, suite,
+                     side runner, gate, calibration, Markdown
+  stats/             bootstrap CI, proportions (Wilson, Fisher, bootstrap diff), agreement (κ)
   orchestration/     legacy adapter-vs-adapter diff (`--target-a/--target-b`)
   models/            pydantic schemas (TestPrompt → ExecutionResult → Judgment → EvalReport)
   compliance/        HIPAA / NIST AI RMF mapping

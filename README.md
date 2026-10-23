@@ -26,6 +26,9 @@ verdict eval --target simple_rag --num-per-category 5
 # Did this prompt/skill/tool change make my agent worse?
 verdict diff --base origin/main --head HEAD --config verdict.yaml
 
+# How well does the judge agree with human labels?
+verdict calibrate --labels evals/human_labels.jsonl --min-kappa 0.7
+
 # Analyze flakiness across historical runs
 verdict flakiness --target my-system --reports-dir ./reports
 ```
@@ -109,6 +112,24 @@ In GitHub Actions, check out with `fetch-depth: 0` so the base ref is available.
 
 The older adapter-vs-adapter mode still works:
 `verdict diff --target-a simple_rag --target-b path/to/v2.py:V2Adapter --num 10`.
+
+### `verdict calibrate`
+
+**Can you trust the judge?** `verdict diff` is only as good as its judge. `verdict
+calibrate` judges human-labeled examples and reports Cohen's κ (95% bootstrap CI),
+agreement, the confusion matrix, failure-detection precision/recall per rubric and per
+failure mode, and every disagreement. It exits **2** when κ < `min_kappa`.
+
+```bash
+verdict calibrate                     # reads judge.calibration / model / min_kappa from verdict.yaml
+verdict calibrate --labels evals/human_labels.jsonl --judge-model claude-sonnet-5-5 --min-kappa 0.7
+```
+
+Labels are JSONL, one per line:
+`{"id": "…", "prompt": "…", "response": "…", "expected_behavior": "…", "label": "pass"|"fail"}`
+(optional: `category`, `severity`, `failure_mode`, `borderline`). The nested format of
+`tests/qa/judge_calibration.json` works too. Outputs: `verdict-calibrate.md` and
+`verdict-calibrate.json`. See [docs/judge_calibration.md](docs/judge_calibration.md).
 
 ### `verdict flakiness`
 
@@ -259,6 +280,8 @@ truth — no labels were derived from judge output.
 Run calibration locally (requires `ANTHROPIC_API_KEY`):
 
 ```bash
+verdict calibrate --labels tests/qa/judge_calibration.json --min-kappa 0.7
+# or the pytest version with the thresholds above:
 pytest tests/qa/test_judge_calibration.py -v -m llm
 ```
 
