@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`verdict diff --base <ref> --head <ref>`** — "did this change make my agent worse?"
+  Runs a JSONL suite N times on two git refs (temporary worktrees, one subprocess per
+  side), judges both with the same judge, and reports per-suite and per-case pass rate
+  with Wilson 95% CIs, Fisher's exact (or bootstrap) significance, and cost/latency
+  deltas. Skips when no `watch` globs changed. Writes a Markdown PR comment and JSON;
+  exits 2 on gate breach. Configured by `verdict.yaml` (`verdict/ci/`).
+- `verdict.stats.proportions`: `wilson_interval`, `fisher_exact`, `bootstrap_diff`
+  (stdlib only).
+- `CLAUDE.md` with stack, commands and working rules.
+
+### Changed
+
+- `verdict diff --target-a/--target-b` is now the legacy mode of `verdict diff`; both
+  flags are optional unless `--base` is omitted.
+- New base dependency: PyYAML (config parsing).
+
 ## [0.4.0] — 2026-08-07
 
 ### Added
