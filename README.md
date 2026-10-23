@@ -23,8 +23,8 @@ pip install verdict-eval
 # Run an evaluation against a built-in adapter
 verdict eval --target simple_rag --num-per-category 5
 
-# Compare two adapter versions
-verdict diff --target-a simple_rag --target-b path/to/v2.py:MyAdapter --num 10
+# Did this prompt/skill/tool change make my agent worse?
+verdict diff --base origin/main --head HEAD --config verdict.yaml
 
 # Analyze flakiness across historical runs
 verdict flakiness --target my-system --reports-dir ./reports
@@ -55,14 +55,60 @@ Run a full evaluation against a target adapter.
 
 ### `verdict diff`
 
-Compare two adapter versions against the same generated test suite.
+**Did this change make my agent worse?** Code changes get CI; prompt, skill,
+tool-definition and model changes usually don't. `verdict diff` runs your eval suite
+N times on two git refs and tells you whether the difference is real or noise.
 
 ```bash
-verdict diff \
-  --target-a simple_rag \
-  --target-b path/to/v2.py:V2Adapter \
-  --num 10
+verdict diff --base origin/main --head HEAD --config verdict.yaml
 ```
+
+```yaml
+# verdict.yaml
+target: agent/verdict_adapter.py:SupportAgent   # a TargetAdapter in your repo
+watch: ["prompts/**", "skills/**", "tools/*.json"]
+suite: evals/core.jsonl
+runs: 10
+judge: { model: claude-sonnet-5-5 }
+gate:
+  max_pass_rate_drop: 0.05   # fail if pass rate drops > 5 pts …
+  significance: 0.05         # … and the drop is significant (p < 0.05)
+  cost_increase_max: 0.20    # fail if mean cost per run rises > 20%
+# optional: gate.latency_increase_max, gate.fail_on_case_regression,
+#           stats: { method: fisher | bootstrap, bootstrap_iterations, seed }
+```
+
+`evals/core.jsonl` holds one case per line:
+`{"id": "refund-window", "prompt": "…", "expected_behavior": "…"}`
+(`category` and `severity` are optional).
+
+How it works:
+
+1. Lists files changed on `--head` since it left `--base`. If none match `watch`,
+   it writes a "skipped" result and exits 0 (`--force` to run anyway).
+2. Checks each ref out into a temporary git worktree and runs the target there, in its
+   own process, so prompts and code come from that ref. The suite is read once from
+   the current checkout so both sides run the same cases.
+3. Judges every response with the same judge, then reports per-suite and per-case
+   pass rate with a Wilson 95% CI, a significance test (Fisher's exact by default,
+   bootstrap optional), and cost and latency deltas.
+4. Writes `verdict-diff.md` (a PR comment: verdict, regressions, failing cases,
+   summary) and `verdict-diff.json`, and exits **2** if the gate is breached.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--base` | — | Git ref to compare against |
+| `--head` | `HEAD` | Git ref under test |
+| `--config` | `verdict.yaml` | Config file; paths in it are relative to it |
+| `--runs` | from config | Runs per side |
+| `--stats` | from config | `fisher` or `bootstrap` |
+| `--force` | off | Run even if no watched files changed |
+| `--json-out` / `--md-out` | `verdict-diff.json` / `.md` | Output paths |
+
+In GitHub Actions, check out with `fetch-depth: 0` so the base ref is available.
+
+The older adapter-vs-adapter mode still works:
+`verdict diff --target-a simple_rag --target-b path/to/v2.py:V2Adapter --num 10`.
 
 ### `verdict flakiness`
 

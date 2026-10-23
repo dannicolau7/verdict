@@ -2,7 +2,7 @@
 
 Commands:
     verdict eval        Run a full evaluation against a target adapter.
-    verdict diff        Compare two adapter versions on the same test suite.
+    verdict diff        Did this change make my agent worse? (--base/--head git refs)
     verdict flakiness   Analyze historical run variance for a target system.
     verdict compliance  Map an eval report to HIPAA + NIST AI RMF controls.
 
@@ -246,22 +246,65 @@ def eval_cmd(
 
 
 @main.command("diff")
-@click.option("--target-a", required=True, help="Adapter A spec.")
-@click.option("--target-b", required=True, help="Adapter B spec.")
-@click.option("--num", default=5, show_default=True, help="Prompts per category.")
-@click.option("--categories", multiple=True)
-@click.option("--output-dir", type=click.Path(), default=None)
-@click.option("--run-id", default=None)
+@click.option("--base", "base_ref", default=None, help="Git ref to compare against (e.g. origin/main).")
+@click.option("--head", "head_ref", default="HEAD", show_default=True, help="Git ref under test.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(),
+    default="verdict.yaml",
+    show_default=True,
+    help="verdict.yaml with target, suite, watch globs and gate.",
+)
+@click.option("--runs", type=int, default=None, help="Override runs per side from the config.")
+@click.option(
+    "--stats",
+    "stats_method",
+    type=click.Choice(["fisher", "bootstrap"]),
+    default=None,
+    help="Significance test (default from config: fisher).",
+)
+@click.option("--force", is_flag=True, default=False, help="Run even if no watched files changed.")
+@click.option(
+    "--json-out",
+    type=click.Path(),
+    default="verdict-diff.json",
+    show_default=True,
+    help="Machine-readable result (git mode).",
+)
+@click.option(
+    "--md-out",
+    type=click.Path(),
+    default="verdict-diff.md",
+    show_default=True,
+    help="Markdown PR comment (git mode).",
+)
+# Legacy mode: compare two adapters on a generated suite.
+@click.option("--target-a", default=None, help="[legacy] Adapter A spec.")
+@click.option("--target-b", default=None, help="[legacy] Adapter B spec.")
+@click.option("--num", default=5, show_default=True, help="[legacy] Prompts per category.")
+@click.option("--categories", multiple=True, help="[legacy] Category filter.")
+@click.option("--output-dir", type=click.Path(), default=None, help="[legacy] Report directory.")
+@click.option("--run-id", default=None, help="[legacy] Custom run ID.")
 @click.option(
     "--cache-mode",
     type=click.Choice(["off", "record", "replay", "update"]),
     default="off",
     show_default=True,
+    help="[legacy] Response caching mode.",
 )
 @click.option("--cache-dir", type=click.Path(), default=".verdict_cache", show_default=True)
 def diff_cmd(
-    target_a: str,
-    target_b: str,
+    base_ref: str | None,
+    head_ref: str,
+    config_path: str,
+    runs: int | None,
+    stats_method: str | None,
+    force: bool,
+    json_out: str,
+    md_out: str,
+    target_a: str | None,
+    target_b: str | None,
     num: int,
     categories: tuple,
     output_dir: str | None,
@@ -269,7 +312,30 @@ def diff_cmd(
     cache_mode: str,
     cache_dir: str,
 ) -> None:
-    """Compare two adapter versions against the same test suite."""
+    """Did this change make my agent worse?
+
+    \b
+    Git mode (CI for prompt, skill, tool and model changes):
+        verdict diff --base origin/main --head HEAD [--config verdict.yaml]
+    Runs the suite N times on each ref, compares pass rates with Wilson CIs and a
+    significance test, writes verdict-diff.md (PR comment) and verdict-diff.json,
+    and exits 2 if the gate in verdict.yaml is breached. Exits 0 without running
+    when no files matching `watch` changed.
+
+    \b
+    Legacy mode (two adapters, generated suite):
+        verdict diff --target-a simple_rag --target-b path/to/v2.py:V2Adapter
+    """
+    if base_ref is not None:
+        if target_a or target_b:
+            raise click.UsageError("--base/--head and --target-a/--target-b are mutually exclusive.")
+        _git_diff(
+            base_ref, head_ref, config_path, runs, stats_method, force, Path(json_out), Path(md_out)
+        )
+        return
+    if not (target_a and target_b):
+        raise click.UsageError("Provide --base <ref> (git mode) or --target-a and --target-b.")
+
     from verdict.caching.cache import CacheMode as CM
     from verdict.orchestration.diff import run_diff
 
@@ -292,6 +358,69 @@ def diff_cmd(
     )
     console.print(f"[green]✓[/green] JSON: {json_path}")
     console.print(f"[green]✓[/green] Markdown: {md_path}")
+
+
+def _git_diff(
+    base_ref: str,
+    head_ref: str,
+    config_path: str,
+    runs: int | None,
+    stats_method: str | None,
+    force: bool,
+    json_out: Path,
+    md_out: Path,
+) -> None:
+    from verdict.ci import diff as ci_diff
+    from verdict.ci.comment import render_json, render_markdown
+    from verdict.ci.config import ConfigError, load_config
+    from verdict.ci.git import GitError
+    from verdict.ci.suite import SuiteError
+
+    try:
+        config = load_config(config_path)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if runs is not None:
+        if runs < 1:
+            raise click.UsageError("--runs must be >= 1")
+        config.runs = runs
+    if stats_method is not None:
+        config.stats.method = stats_method  # type: ignore[assignment]
+
+    console.rule("[bold blue]Verdict Diff")
+    try:
+        result = ci_diff.run_git_diff(
+            config,
+            base_ref,
+            head_ref,
+            force=force,
+            on_progress=lambda msg: console.print(f"  {msg}"),
+        )
+    except (GitError, SuiteError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    for path, text in ((json_out, render_json(result)), (md_out, render_markdown(result))):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    console.print(f"[green]✓[/green] JSON: {json_out}")
+    console.print(f"[green]✓[/green] Markdown: {md_out}")
+
+    if result.status == "skipped":
+        console.print("[dim]Skipped: no watched files changed.[/dim]")
+        return
+    assert result.suite is not None
+    s = result.suite
+    console.print(
+        f"\nPass rate {s.base.pass_rate:.1%} → {s.head.pass_rate:.1%} "
+        f"({s.delta * 100:+.1f} pts, p={s.p_value:.3g}); "
+        f"{len(result.regressions)} regressed, {len(result.improvements)} improved."
+    )
+    if not result.gate.passed:
+        console.print("[bold red]Gate breached:[/bold red]")
+        for check in result.gate.breaches:
+            console.print(f"  [red]✗[/red] {check.detail}")
+        sys.exit(2)
+    console.print("[bold green]✓ Gate passed.[/bold green]")
 
 
 # ---------------------------------------------------------------------------
