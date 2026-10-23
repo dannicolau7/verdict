@@ -1,0 +1,83 @@
+name: Verdict diff
+description: Did this change make my agent worse? Runs `verdict diff` on a PR and gates on the result.
+author: Dan Nicolau
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  config:
+    description: Path to verdict.yaml.
+    default: verdict.yaml
+  base:
+    description: Base ref or SHA. Defaults to the PR's base commit.
+    default: ${{ github.event.pull_request.base.sha }}
+  head:
+    description: Head ref or SHA. Defaults to the PR's head commit.
+    default: ${{ github.event.pull_request.head.sha || github.sha }}
+  runs:
+    description: Override runs per side from verdict.yaml.
+    default: ""
+  anthropic-api-key:
+    description: API key for the judge (and your agent, if it uses Anthropic).
+    default: ""
+  verdict-version:
+    description: verdict-eval version (e.g. "0.5.*"), "latest", or a pip path/URL such as git+https://github.com/dannicolau7/verdict@main.
+    default: "0.5.*"
+  python-version:
+    description: Python version to run on.
+    default: "3.12"
+  comment:
+    description: Post or update a PR comment with the result.
+    default: "true"
+  github-token:
+    description: Token used to post the PR comment.
+    default: ${{ github.token }}
+
+outputs:
+  status:
+    description: completed | skipped | error
+    value: ${{ steps.diff.outputs.status }}
+  passed:
+    description: "true if the gate passed (or the run was skipped)."
+    value: ${{ steps.diff.outputs.passed }}
+  json-path:
+    description: Path to verdict-diff.json.
+    value: ${{ steps.diff.outputs.json-path }}
+  markdown-path:
+    description: Path to verdict-diff.md.
+    value: ${{ steps.diff.outputs.markdown-path }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - id: diff
+      shell: bash
+      run: ${{ github.action_path }}/run.sh
+      env:
+        VERDICT_CONFIG: ${{ inputs.config }}
+        VERDICT_BASE: ${{ inputs.base }}
+        VERDICT_HEAD: ${{ inputs.head }}
+        VERDICT_RUNS: ${{ inputs.runs }}
+        VERDICT_VERSION: ${{ inputs.verdict-version }}
+        INPUT_ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+
+    - if: always() && inputs.comment == 'true' && github.event.pull_request && steps.diff.outputs.markdown-path != ''
+      uses: actions/github-script@v7
+      env:
+        VERDICT_ACTION_PATH: ${{ github.action_path }}
+        VERDICT_MD: ${{ steps.diff.outputs.markdown-path }}
+        VERDICT_STATUS: ${{ steps.diff.outputs.status }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: await require(process.env.VERDICT_ACTION_PATH + '/comment.js')({ github, context, core })
+
+    - if: always() && steps.diff.outputs.passed != 'true'
+      shell: bash
+      run: |
+        echo "::error title=Verdict::${{ steps.diff.outputs.status == 'error' && 'verdict diff failed to run; see the log above.' || 'Gate breached: this change made the agent worse. See the PR comment or job summary.' }}"
+        exit 1

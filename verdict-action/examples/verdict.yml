@@ -1,0 +1,27 @@
+# Copy to .github/workflows/verdict.yml in your agent's repo.
+name: Verdict
+
+on:
+  pull_request:
+    # Optional: only start the job for these paths. verdict diff also skips by
+    # itself when nothing matching `watch` in verdict.yaml changed.
+    paths: ["prompts/**", "skills/**", "tools/*.json", "verdict.yaml", "evals/**"]
+
+permissions:
+  contents: read
+  pull-requests: write   # to post the comment
+
+concurrency:
+  group: verdict-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verdict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # verdict diff checks out the base commit too
+      - uses: dannicolau7/verdict-action@v1
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

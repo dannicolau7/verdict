@@ -1,0 +1,5 @@
+# Used by the self-test: watch globs that nothing in this repo matches, so
+# `verdict diff` takes the "skipped" path and needs no API key.
+target: agent.py:Agent
+suite: core.jsonl
+watch: ["prompts/**"]
