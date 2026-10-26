@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`verdict skills`** — regression tests for `SKILL.md` skills. Per skill, a YAML golden
+  suite of trigger cases (right skill picked, or none) and judged output cases runs
+  `--runs` times and is compared with a stored baseline: Wilson CI per skill, Fisher's
+  exact against the baseline, `--max-drop`, newly failing vs newly flaky cases, and a
+  fingerprint of model, judge, version and SKILL.md hashes. Exits 2 on regression;
+  writes `verdict-skills.md` (PR comment) and `verdict-skills.json`.
+
 ## [0.8.0] — 2026-10-26
 
 ### Added

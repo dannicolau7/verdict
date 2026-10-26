@@ -4,6 +4,7 @@ Commands:
     verdict eval        Run a full evaluation against a target adapter.
     verdict diff        Did this change make my agent worse? (--base/--head git refs)
     verdict calibrate   How well does the judge agree with human labels?
+    verdict skills      Did a skill stop working? (SKILL.md golden suites vs baseline)
     verdict sample-size How many runs does verdict diff need to catch a regression?
     verdict trajectory  Did the agent use its tools correctly? (deterministic)
     verdict import      Draft eval cases from production traces (OTel, LangSmith, JSONL)
@@ -524,6 +525,123 @@ def calibrate_cmd(
         sys.exit(2)
     if min_kappa is not None:
         console.print(f"[bold green]✓ kappa ≥ {min_kappa:g}[/bold green]")
+
+
+# ---------------------------------------------------------------------------
+# verdict skills
+# ---------------------------------------------------------------------------
+
+
+@main.command("skills")
+@click.option("--skills-dir", type=click.Path(), default="skills", show_default=True,
+              help="Folder of <name>/SKILL.md.")
+@click.option("--tests", "tests_dir", type=click.Path(), default="evals/skills", show_default=True,
+              help="Folder of <skill>.yaml golden suites.")
+@click.option("--baseline", type=click.Path(), default="verdict-skills-baseline.json",
+              show_default=True, help="Last accepted run to compare against.")
+@click.option("--runs", type=int, default=3, show_default=True, help="Runs per case.")
+@click.option("--model", default=None, help="Model under test [default: settings executor model].")
+@click.option("--judge-model", default=None, help="Judge model [default: settings judge model].")
+@click.option("--max-drop", type=float, default=0.05, show_default=True,
+              help="Pass-rate drop per skill that fails the gate even if not significant.")
+@click.option("--significance", type=float, default=0.05, show_default=True)
+@click.option("--update-baseline", is_flag=True, help="Accept this run as the new baseline.")
+@click.option("--json-out", type=click.Path(), default="verdict-skills.json", show_default=True)
+@click.option("--md-out", type=click.Path(), default="verdict-skills.md", show_default=True)
+def skills_cmd(
+    skills_dir: str,
+    tests_dir: str,
+    baseline: str,
+    runs: int,
+    model: str | None,
+    judge_model: str | None,
+    max_drop: float,
+    significance: float,
+    update_baseline: bool,
+    json_out: str,
+    md_out: str,
+) -> None:
+    """Did a skill stop working? Regression-test SKILL.md files.
+
+    \b
+        verdict skills --update-baseline        # first run: record the baseline
+        verdict skills                          # later runs: exit 2 on regression
+
+    Runs each skill's golden suite (trigger cases: is the right skill picked, or none;
+    output cases: judged answers with the skill loaded) --runs times, then compares
+    per-skill pass rates with the baseline (Fisher's exact + --max-drop). Re-run on any
+    model change, skill edit or new neighbouring skill, and on a weekly schedule.
+    """
+    from verdict.ci.diff import llm_judge
+    from verdict.ci.skills import (
+        SkillSuiteError,
+        compare,
+        llm_responder,
+        llm_router,
+        load_baseline,
+        load_skill_suites,
+        load_skills,
+        render_skills_markdown,
+        run_skill_suites,
+    )
+    from verdict.config.settings import get_settings
+
+    if runs < 1:
+        raise click.UsageError("--runs must be >= 1.")
+    try:
+        skills = load_skills(skills_dir)
+        suites = load_skill_suites(tests_dir)
+        base = None if update_baseline else load_baseline(baseline)
+    except SkillSuiteError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    settings = get_settings()
+    model = model or settings.default_executor_model
+    judge_model = judge_model or settings.default_judge_model
+
+    console.rule("[bold blue]Verdict Skills")
+    report = run_skill_suites(
+        skills,
+        suites,
+        router=llm_router(model),
+        responder=llm_responder(model),
+        judge=llm_judge(judge_model),
+        runs=runs,
+        model=model,
+        judge_model=judge_model,
+        on_progress=lambda msg: console.print(f"  {msg}"),
+    )
+    result = compare(report, base, max_drop=max_drop, significance=significance)
+
+    for out, text in (
+        (Path(json_out), result.model_dump_json(indent=2)),
+        (Path(md_out), render_skills_markdown(result)),
+    ):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+
+    table = Table(show_header=True)
+    for col in ("Skill", "Base", "Now", "Status"):
+        table.add_column(col)
+    for c in result.skills:
+        table.add_row(
+            c.skill,
+            "–" if c.base_rate is None else f"{c.base_rate:.0%}",
+            f"{c.head_rate:.0%}",
+            c.status,
+        )
+    console.print(table)
+    for change in result.fingerprint_changes:
+        console.print(f"[yellow]changed:[/yellow] {change}")
+
+    if update_baseline or base is None:
+        Path(baseline).write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        console.print(f"[green]✓[/green] Baseline written: {baseline}")
+        return
+    if not result.passed:
+        console.print(f"[bold red]✗ {len(result.regressions)} skill(s) regressed[/bold red]")
+        sys.exit(2)
+    console.print("[bold green]✓ No skill regressions[/bold green]")
 
 
 # ---------------------------------------------------------------------------

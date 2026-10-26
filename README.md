@@ -221,6 +221,38 @@ Labels are JSONL, one per line:
 `tests/qa/judge_calibration.json` works too. Outputs: `verdict-calibrate.md` and
 `verdict-calibrate.json`. See [docs/judge_calibration.md](docs/judge_calibration.md).
 
+### `verdict skills`
+
+**Did a skill stop working?** Skills rot without being edited: a new model reads them
+differently, a new neighbouring skill steals the trigger, a referenced rule goes stale.
+`verdict skills` runs a golden suite per `skills/<name>/SKILL.md` and compares it with
+the last accepted run. It exits **2** on regression.
+
+```bash
+verdict skills --update-baseline      # first run: record verdict-skills-baseline.json
+verdict skills --runs 3               # later runs: compare and gate
+```
+
+One YAML file per skill in `evals/skills/<skill>.yaml`:
+
+```yaml
+trigger:                              # is this skill picked, or none?
+  - {id: loads-on-ticket, prompt: "Clean this before I post it: Jane Roe …", expect: pii-redaction}
+  - {id: ignores-code, prompt: "Write a pytest fixture", expect: null}
+output:                               # with the skill loaded, is the answer right? (judged)
+  - id: removes-name
+    prompt: "Redact: Jane Roe (jane@example.com) …"
+    expected_behavior: "Name and email replaced; complaint kept."
+```
+
+Every case runs `--runs` times. A skill regresses when its pass rate drops by more than
+`--max-drop` or significantly (Fisher's exact), or when a case that passed every baseline
+run now fails most runs (one-off failures are flagged as *newly flaky*, advisory). Each
+run stores a fingerprint (model, judge model, Verdict version, SKILL.md hashes), so the
+report says what changed. Trigger checks simulate skill selection with a catalog prompt:
+a proxy for runtime loading, not the runtime itself. Run it on skill edits, model
+changes and on a weekly schedule. Example: [examples/skills](examples/skills).
+
 ### `verdict flakiness`
 
 Analyze judge and target consistency across historical evaluation runs.

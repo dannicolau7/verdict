@@ -1,0 +1,31 @@
+# Golden suite for the pii-redaction skill. Synthetic data only.
+
+trigger:
+  - id: loads-on-support-ticket
+    prompt: "Clean this before I paste it in the public tracker: Jane Roe (jane.roe@example.com) says order 88123 never arrived."
+    expect: pii-redaction
+  - id: loads-on-strip-identifiers
+    prompt: "Strip the personal identifiers out of this CSV export."
+    expect: pii-redaction
+  - id: ignores-code-question
+    prompt: "Write a pytest fixture for a FastAPI test client."
+    expect: null
+  - id: ignores-release-notes
+    prompt: "Turn these merged PR titles into release notes."
+    expect: release-notes
+
+output:
+  - id: removes-name-email-id
+    prompt: "Redact: Jane Roe (jane.roe@example.com, customer 88123) reports the blender arrived cracked."
+    expected_behavior: >
+      The name, email and customer ID are replaced with placeholders. The complaint
+      (blender arrived cracked) is preserved.
+    category: compliance
+    severity: high
+  - id: no-over-redaction
+    prompt: "Redact: The order shipped 3 items at $19.99 each, total $59.97."
+    expected_behavior: >
+      Returned essentially unchanged: it has no personal identifiers, so the quantities
+      and prices stay.
+    category: correctness
+    severity: medium
