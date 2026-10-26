@@ -6,6 +6,8 @@ Commands:
     verdict calibrate   How well does the judge agree with human labels?
     verdict sample-size How many runs does verdict diff need to catch a regression?
     verdict trajectory  Did the agent use its tools correctly? (deterministic)
+    verdict import      Draft eval cases from production traces (OTel, LangSmith, JSONL)
+    verdict review      Approve drafted cases into a suite
     verdict flakiness   Analyze historical run variance for a target system.
     verdict compliance  Map an eval report to HIPAA + NIST AI RMF controls.
 
@@ -686,6 +688,187 @@ def trajectory_cmd(
     if not report.passed:
         console.print(f"[bold red]✗ pass rate below {min_pass_rate:.0%}[/bold red]")
         sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
+# verdict import / verdict review
+# ---------------------------------------------------------------------------
+
+
+@main.command("import")
+@click.argument("source", type=click.Path())
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["auto", "verdict", "jsonl", "otel", "langsmith"]),
+    default="auto",
+    show_default=True,
+)
+@click.option(
+    "--out",
+    type=click.Path(),
+    default="evals/drafts.jsonl",
+    show_default=True,
+    help="Drafts file (JSONL); new drafts are merged in, existing ones kept.",
+)
+@click.option("--limit", type=int, default=None, help="Import at most this many traces.")
+@click.option("--no-llm", is_flag=True, default=False, help="Rule-based drafts only (no API calls).")
+@click.option("--draft-model", default=None, help="Model that drafts cases [default: generator model].")
+def import_cmd(
+    source: str,
+    fmt: str,
+    out: str,
+    limit: int | None,
+    no_llm: bool,
+    draft_model: str | None,
+) -> None:
+    """Draft eval cases from production traces, for human review.
+
+    \b
+        verdict import traces.otlp.json                  # OpenTelemetry OTLP/JSON
+        verdict import runs.jsonl --format langsmith     # LangSmith run export
+        verdict import logs.jsonl --no-llm               # generic JSONL, no API calls
+        verdict review evals/drafts.jsonl --suite evals/core.jsonl
+
+    Every draft starts as "pending". Nothing reaches a suite until someone approves it
+    with `verdict review`. Drafts include the observed output, tools and any trajectory
+    findings, and an expected_trajectory when the observed one passed its checks.
+    """
+    from verdict.traces.drafting import draft_cases, llm_drafter, rule_drafter
+    from verdict.traces.importers import TraceImportError, load_any
+    from verdict.traces.review import DraftsError, load_drafts, merge_drafts, save_drafts
+
+    try:
+        detected, traces = load_any(source, fmt)
+    except TraceImportError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if limit is not None:
+        traces = traces[: max(limit, 0)]
+
+    if no_llm:
+        drafter, name = rule_drafter, "rule"
+    else:
+        try:
+            from verdict.config.settings import get_settings
+
+            model = draft_model or get_settings().default_generator_model
+            drafter, name = llm_drafter(model), f"llm:{model}"
+        except Exception as exc:
+            raise click.ClickException(
+                f"LLM drafter unavailable ({exc}). Set ANTHROPIC_API_KEY or pass --no-llm."
+            ) from exc
+
+    console.print(f"  Read {len(traces)} {detected} trace(s) from {source}; drafting with {name}…")
+    drafts = draft_cases(traces, fmt=detected, source_file=str(source), drafter=drafter,
+                         drafter_name=name)
+    try:
+        merged, added = merge_drafts(load_drafts(out), drafts)
+    except DraftsError as exc:
+        raise click.ClickException(str(exc)) from exc
+    save_drafts(out, merged)
+
+    skipped = len(traces) - len(drafts)
+    console.print(
+        f"[green]✓[/green] {added} new draft(s) → {out}"
+        + (f" ({len(drafts) - added} already there)" if len(drafts) > added else "")
+        + (f"; {skipped} trace(s) without a request skipped" if skipped else "")
+    )
+    todo = sum(1 for d in drafts if d.needs_edit)
+    if todo:
+        console.print(f"  {todo} draft(s) need expected_behavior filled in during review.")
+    console.print(f"  Next: verdict review {out} --suite evals/core.jsonl")
+
+
+def _show_draft(i: int, n: int, d) -> None:  # d: DraftCase
+    console.rule(f"[bold]Draft {i}/{n}[/bold]  {d.id}  ({d.drafted_by})")
+    console.print(f"[bold]Prompt[/bold]      {d.prompt}")
+    console.print(f"[bold]Expected[/bold]    {d.expected_behavior}")
+    console.print(f"[bold]Category[/bold]    {d.category} / {d.severity}")
+    if d.expected_trajectory:
+        console.print(f"[bold]Trajectory[/bold]  {' → '.join(d.expected_trajectory.get('tools', []))}")
+    if d.observed_output:
+        console.print(f"[dim]Observed output: {d.observed_output}[/dim]")
+    for f in d.findings:
+        console.print(f"[yellow]  ⚠ {f}[/yellow]")
+    if d.notes:
+        console.print(f"[dim]Notes: {d.notes}[/dim]")
+
+
+@main.command("review")
+@click.argument("drafts_path", type=click.Path())
+@click.option("--suite", type=click.Path(), required=True, help="Suite JSONL to append approved cases to.")
+@click.option(
+    "--apply",
+    "apply_only",
+    is_flag=True,
+    default=False,
+    help="Don't prompt; just add drafts already marked approved in the file.",
+)
+def review_cmd(drafts_path: str, suite: str, apply_only: bool) -> None:
+    """Approve, edit or reject drafted eval cases; approved ones go into the suite.
+
+    \b
+    For each pending draft:  [a]pprove  [e]dit  [r]eject  [s]kip  [q]uit
+    Editing asks for expected_behavior, category and severity. A draft whose
+    expected_behavior is still a TODO can't be approved until it's edited.
+    """
+    from verdict.traces.drafting import CATEGORIES, SEVERITIES
+    from verdict.traces.review import DraftsError, add_approved_to_suite, load_drafts, save_drafts
+
+    try:
+        drafts = load_drafts(drafts_path)
+    except DraftsError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if not drafts:
+        raise click.ClickException(f"no drafts in {drafts_path}")
+
+    if not apply_only:
+        pending = [d for d in drafts if d.status == "pending"]
+        if not pending:
+            console.print("No pending drafts.")
+        for i, d in enumerate(pending, start=1):
+            _show_draft(i, len(pending), d)
+            while True:
+                choice = click.prompt(
+                    "[a]pprove [e]dit [r]eject [s]kip [q]uit",
+                    type=click.Choice(list("aersq")),
+                    show_choices=False,
+                )
+                if choice == "e":
+                    d.expected_behavior = click.prompt(
+                        "Expected behavior", default=d.expected_behavior
+                    ).strip()
+                    d.category = click.prompt(
+                        "Category", default=d.category, type=click.Choice(CATEGORIES)
+                    )
+                    d.severity = click.prompt(
+                        "Severity", default=d.severity, type=click.Choice(SEVERITIES)
+                    )
+                    continue
+                if choice == "a" and d.needs_edit:
+                    console.print("[yellow]Fill in expected_behavior first ([e]dit).[/yellow]")
+                    continue
+                break
+            if choice == "q":
+                break
+            if choice == "a":
+                d.status = "approved"
+            elif choice == "r":
+                d.status = "rejected"
+        save_drafts(drafts_path, drafts)
+
+    try:
+        added = add_approved_to_suite(drafts, suite)
+    except DraftsError as exc:
+        save_drafts(drafts_path, drafts)
+        raise click.ClickException(str(exc)) from exc
+    save_drafts(drafts_path, drafts)
+    counts = {s: sum(1 for d in drafts if d.status == s) for s in ("pending", "rejected", "added")}
+    console.print(
+        f"[green]✓[/green] {added} case(s) added to {suite}. "
+        f"{counts['pending']} pending, {counts['rejected']} rejected, "
+        f"{counts['added']} in the suite overall."
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -30,7 +30,7 @@ tool-definition and model changes, the way CI does for code.
 ```
 verdict/
   cli.py             click entry point: eval | diff | calibrate | trajectory | sample-size |
-                     flakiness | compliance | trace-eval
+                     import | review | flakiness | compliance | trace-eval
   agents/            test_generator, executor, judge (XML-delimited, injection-resistant),
                      reporter (deterministic Python), trace_judge, adaptive_generator
   adapters/          TargetAdapter base (concurrency, timeout, caching) + built-ins
@@ -42,6 +42,7 @@ verdict/
   models/            pydantic schemas (TestPrompt → ExecutionResult → Judgment → EvalReport)
   compliance/        HIPAA / NIST AI RMF mapping
   evals/             rubrics, categories, trajectory checks (deterministic)
+  traces/            trace importers (OTel, LangSmith, JSONL), case drafting, review
   caching/ costs/ observability/ analysis/ reports/ config/
 web/                 FastAPI backend + React frontend
 tests/               smoke/ unit/ security/ qa/ integration/
