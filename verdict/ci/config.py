@@ -43,6 +43,9 @@ class GateConfig(BaseModel):
     significance: float = Field(default=0.05, gt=0.0, le=1.0)
     cost_increase_max: float | None = Field(default=None, ge=0.0)
     latency_increase_max: float | None = Field(default=None, ge=0.0)
+    steps_increase_max: float | None = Field(
+        default=None, ge=0.0, description="Max rise in mean trajectory steps per run."
+    )
     fail_on_case_regression: bool = False
 
 

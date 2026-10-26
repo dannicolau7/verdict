@@ -49,6 +49,7 @@ from verdict.caching.backends import CacheBackend, FileSystemCacheBackend
 from verdict.caching.cache import CacheMissError, CacheMode, compute_cache_key
 from verdict.config.settings import get_settings
 from verdict.models.schemas import ExecutionResult, TestPrompt
+from verdict.models.trace_schemas import TraceStep
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +286,7 @@ class TargetAdapter(ABC):
         latency_ms: float = 0.0,
         token_count: int | None = None,
         error: str | None = None,
+        steps: list[TraceStep] | None = None,
         **extra: Any,
     ) -> ExecutionResult:
         """Construct an ExecutionResult with sensible defaults.
@@ -302,6 +304,8 @@ class TargetAdapter(ABC):
             latency_ms:  Optional latency override in ms (default 0.0 → auto).
             token_count: Total tokens consumed, if available.
             error:       Error message string, if the call failed.
+            steps:       The agent's trajectory (tool calls, results, final answer), if
+                         available. Lets `verdict diff` check tool use, not just text.
             **extra:     Ignored (future-proofing; ExecutionResult uses extra="forbid").
 
         Returns:
@@ -313,4 +317,5 @@ class TargetAdapter(ABC):
             latency_ms=latency_ms,
             token_count=token_count,
             error=error,
+            steps=steps,
         )

@@ -9,6 +9,10 @@ One case per line::
 ``prompt`` and ``expected_behavior`` are required. ``id`` defaults to ``case-<line>``,
 ``category`` to ``correctness`` and ``severity`` to ``medium``. Any other keys go into
 ``metadata``. Blank lines and lines starting with ``#`` are skipped.
+
+Optional ``expected_trajectory`` (see TrajectoryExpectation) is validated here and
+checked against the steps the adapter reports, e.g.
+``{"tools": ["lookup_order", "refund"], "forbidden_tools": ["delete_account"]}``.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from verdict.models.schemas import TestPrompt
+from verdict.models.trace_schemas import TrajectoryExpectation
 
 _FIELDS = {"id", "prompt", "expected_behavior", "category", "severity", "metadata"}
 
@@ -47,6 +52,13 @@ def load_suite(path: str | Path) -> list[TestPrompt]:
 
         metadata = dict(raw.get("metadata") or {})
         metadata.update({k: v for k, v in raw.items() if k not in _FIELDS})
+        if "expected_trajectory" in metadata:
+            try:
+                metadata["expected_trajectory"] = TrajectoryExpectation(
+                    **(metadata["expected_trajectory"] or {})
+                ).model_dump(exclude_defaults=True)
+            except (ValidationError, TypeError) as exc:
+                raise SuiteError(f"{p}:{lineno}: invalid expected_trajectory: {exc}") from exc
         case_id = str(raw.get("id") or f"case-{lineno:03d}")
         if case_id in seen:
             raise SuiteError(f"{p}:{lineno}: duplicate case id {case_id!r}")

@@ -5,6 +5,7 @@ Commands:
     verdict diff        Did this change make my agent worse? (--base/--head git refs)
     verdict calibrate   How well does the judge agree with human labels?
     verdict sample-size How many runs does verdict diff need to catch a regression?
+    verdict trajectory  Did the agent use its tools correctly? (deterministic)
     verdict flakiness   Analyze historical run variance for a target system.
     verdict compliance  Map an eval report to HIPAA + NIST AI RMF controls.
 
@@ -613,6 +614,78 @@ def sample_size_cmd(
         "[dim]Normal approximation; Fisher's exact is slightly more conservative. Runs of "
         "the same case are correlated, so more distinct cases beat more runs.[/dim]"
     )
+
+
+# ---------------------------------------------------------------------------
+# verdict trajectory
+# ---------------------------------------------------------------------------
+
+
+@main.command("trajectory")
+@click.option("--trace", "trace_path", type=click.Path(), default=None, help="One AgentTrace JSON.")
+@click.option("--traces-dir", type=click.Path(), default=None, help="Directory of AgentTrace JSON.")
+@click.option(
+    "--min-pass-rate",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Exit 2 if fewer traces than this pass.",
+)
+@click.option("--json-out", type=click.Path(), default="verdict-trajectory.json", show_default=True)
+@click.option("--md-out", type=click.Path(), default="verdict-trajectory.md", show_default=True)
+def trajectory_cmd(
+    trace_path: str | None,
+    traces_dir: str | None,
+    min_pass_rate: float,
+    json_out: str,
+    md_out: str,
+) -> None:
+    """Did the agent use its tools correctly? Deterministic, no LLM calls.
+
+    \b
+        verdict trajectory --traces-dir ./traces --min-pass-rate 0.95
+
+    Checks each AgentTrace against its `expected_trajectory` (tool sequence,
+    forbidden tools, arguments, step limits, required output) and always flags
+    crashes, empty output, unknown tools, swallowed tool errors, empty tool results
+    and repeated calls. Writes verdict-trajectory.md and .json; exits 2 when the
+    pass rate is below --min-pass-rate.
+    """
+    from verdict.adapters.trace_ingestor import load_traces
+    from verdict.ci.comment import render_trajectory_json, render_trajectory_markdown
+    from verdict.ci.trajectory import evaluate_traces
+
+    if (trace_path is None) == (traces_dir is None):
+        raise click.UsageError("Provide exactly one of --trace or --traces-dir.")
+    if not 0.0 <= min_pass_rate <= 1.0:
+        raise click.UsageError("--min-pass-rate must be between 0 and 1.")
+    source = Path(trace_path or traces_dir or "")
+    try:
+        traces = load_traces(source)
+    except (FileNotFoundError, ValueError) as exc:
+        raise click.ClickException(f"Failed to load traces: {exc}") from exc
+
+    report = evaluate_traces(traces, min_pass_rate=min_pass_rate)
+    for out, text in (
+        (Path(json_out), render_trajectory_json(report)),
+        (Path(md_out), render_trajectory_markdown(report)),
+    ):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+
+    for t in report.traces:
+        mark = "[green]PASS[/green]" if t.result.passed else "[red]FAIL[/red]"
+        why = t.result.errors[0].detail if t.result.errors else ""
+        console.print(f"  {mark}  {t.trace_id[:24]}  {why}")
+    console.print(
+        f"\n{report.n_passed}/{report.n_traces} traces pass ({report.pass_rate:.0%}); "
+        f"{report.mean_tool_calls:.1f} tool calls per trace."
+    )
+    console.print(f"[green]✓[/green] JSON: {json_out}")
+    console.print(f"[green]✓[/green] Markdown: {md_out}")
+    if not report.passed:
+        console.print(f"[bold red]✗ pass rate below {min_pass_rate:.0%}[/bold red]")
+        sys.exit(2)
 
 
 # ---------------------------------------------------------------------------

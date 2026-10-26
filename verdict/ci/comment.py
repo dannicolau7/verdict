@@ -11,9 +11,11 @@ import json
 
 from verdict.ci.calibrate import CalibrationResult
 from verdict.ci.diff import CaseDiff, DiffResult, SideStats
+from verdict.ci.trajectory import TrajectoryReport
 
 COMMENT_MARKER = "<!-- verdict-diff -->"
 CALIBRATE_MARKER = "<!-- verdict-calibrate -->"
+TRAJECTORY_MARKER = "<!-- verdict-trajectory -->"
 _MAX_ROWS = 15
 
 
@@ -125,6 +127,21 @@ def render_markdown(result: DiffResult) -> str:
         lines.append(f"| pass^{k_max} (all {k_max} pass) | {bk:.0%} | {hk:.0%} | {_pts(hk - bk)} |")
         ba, ha = suite.base.pass_at_k[str(k_max)], suite.head.pass_at_k[str(k_max)]
         lines.append(f"| pass@{k_max} (any pass) | {ba:.0%} | {ha:.0%} | {_pts(ha - ba)} |")
+    if suite.base.mean_tool_calls is not None and suite.head.mean_tool_calls is not None:
+        lines.append(
+            f"| Tool calls / run | {suite.base.mean_tool_calls:.1f} | {suite.head.mean_tool_calls:.1f} "
+            f"| {suite.head.mean_tool_calls - suite.base.mean_tool_calls:+.1f} |"
+        )
+    if suite.base.mean_steps is not None and suite.head.mean_steps is not None:
+        lines.append(
+            f"| Steps / run | {suite.base.mean_steps:.1f} | {suite.head.mean_steps:.1f} "
+            f"| {_pct(suite.steps_delta_pct)} |"
+        )
+    if suite.base.trajectory_failures or suite.head.trajectory_failures:
+        lines.append(
+            f"| Trajectory failures | {suite.base.trajectory_failures} "
+            f"| {suite.head.trajectory_failures} | |"
+        )
     if suite.base.flaky_cases is not None and suite.head.flaky_cases is not None:
         lines.append(f"| Flaky cases | {suite.base.flaky_cases} | {suite.head.flaky_cases} | |")
     if suite.base.errors or suite.head.errors:
@@ -258,3 +275,51 @@ def render_calibration_json(result: CalibrationResult) -> str:
     data = result.model_dump(mode="json")
     data["disagreements"] = [i.id for i in result.disagreements]
     return json.dumps(data, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# verdict trajectory
+# ---------------------------------------------------------------------------
+
+
+def render_trajectory_markdown(report: TrajectoryReport) -> str:
+    ok = "✅" if report.passed else "❌"
+    lines = [
+        TRAJECTORY_MARKER,
+        f"### {ok} Trajectories: {report.n_passed}/{report.n_traces} pass "
+        f"(min {report.min_pass_rate:.0%})",
+        "",
+        f"`{report.agent_name}` · {report.mean_tool_calls:.1f} tool calls and "
+        f"{report.mean_steps:.1f} steps per trace"
+        + (
+            f" · tool recall {report.mean_tool_recall:.0%}, precision {_frac(report.mean_tool_precision)}"
+            if report.mean_tool_recall is not None
+            else ""
+        ),
+        "",
+    ]
+    failing = [t for t in report.traces if not t.result.passed]
+    if failing:
+        lines += [f"#### Failing ({len(failing)})", "", "| Trace | Problem |", "|---|---|"]
+        for t in failing[:_MAX_ROWS]:
+            first = t.result.errors[0].detail
+            more = f" (+{len(t.result.errors) - 1} more)" if len(t.result.errors) > 1 else ""
+            lines.append(f"| `{_cell(t.trace_id, 24)}` | {_cell(first, 70)}{more} |")
+        if len(failing) > _MAX_ROWS:
+            lines.append(f"| … | {len(failing) - _MAX_ROWS} more in the JSON report |")
+        lines.append("")
+    warned = [t for t in report.traces if t.result.warnings]
+    if warned:
+        lines += [f"#### Warnings ({len(warned)})", "", "| Trace | Warning |", "|---|---|"]
+        for t in warned[:_MAX_ROWS]:
+            lines.append(f"| `{_cell(t.trace_id, 24)}` | {_cell(t.result.warnings[0].detail, 70)} |")
+        lines.append("")
+    if report.finding_counts:
+        lines += ["#### Findings by check", "", "| Check | Count |", "|---|---|"]
+        lines += [f"| {k} | {v} |" for k, v in report.finding_counts.items()]
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_trajectory_json(report: TrajectoryReport) -> str:
+    return json.dumps(report.model_dump(mode="json"), indent=2)

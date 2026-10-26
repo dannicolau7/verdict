@@ -100,9 +100,15 @@ How it works:
    at least once in k tries: can the agent do it?) and **pass^k** (passes all k tries:
    does it do it reliably?), and flags **flaky** cases that both passed and failed.
    k defaults to `runs`; set `stats.k` for others.
-5. Warns (without failing) when the suite is **underpowered**: when `runs × cases`
+5. Checks **trajectories** when your adapter reports its steps
+   (`self.make_result(prompt_id, text, steps=[TraceStep(...), ...])`): a case can
+   carry `expected_trajectory` (see `verdict trajectory` below), and degradation checks
+   always run. A trajectory failure fails that run without a judge call, so a tool
+   change the text judge can't see still fails the gate. Steps and tool calls per run
+   are compared too (`gate.steps_increase_max`).
+6. Warns (without failing) when the suite is **underpowered**: when `runs × cases`
    can't reliably detect a drop as small as `max_pass_rate_drop`.
-6. Writes `verdict-diff.md` (a PR comment: verdict, regressions, failing cases,
+7. Writes `verdict-diff.md` (a PR comment: verdict, regressions, failing cases,
    summary) and `verdict-diff.json`, and exits **2** if the gate is breached.
 
 | Flag | Default | Description |
@@ -119,6 +125,36 @@ In GitHub Actions, check out with `fetch-depth: 0` so the base ref is available.
 
 The older adapter-vs-adapter mode still works:
 `verdict diff --target-a simple_rag --target-b path/to/v2.py:V2Adapter --num 10`.
+
+### `verdict trajectory`
+
+**Did the agent use its tools correctly?** Deterministic checks over recorded
+`AgentTrace` JSON files: no LLM calls, so it's cheap enough for every trace.
+
+```bash
+verdict trajectory --traces-dir ./traces --min-pass-rate 0.95
+```
+
+A trace (or a `verdict diff` suite case) can say what a correct trajectory looks like:
+
+```json
+"expected_trajectory": {
+  "tools": ["lookup_order", "refund"],
+  "match": "in_order",
+  "forbidden_tools": ["delete_account"],
+  "args": [{"tool": "refund", "args": {"order_id": "A1", "amount": {"$regex": "^\\d+$"}}}],
+  "max_tool_calls": 4,
+  "output_contains": ["refund"]
+}
+```
+
+`match` is `exact`, `in_order` (expected calls appear in order; extras allowed) or
+`unordered`. Argument values match literally or with `{"$contains": …}`,
+`{"$regex": …}` or `{"$any": true}`. Regardless of expectations it always flags a
+crashed agent, empty output, a tool not in `tools_available`, a tool error the final
+answer never mentions, and (as warnings) empty tool results answered confidently and
+the same call repeated 3+ times. It reports tool recall and precision, writes
+`verdict-trajectory.md`/`.json`, and exits **2** below `--min-pass-rate` (default 1.0).
 
 ### `verdict sample-size`
 

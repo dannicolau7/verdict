@@ -25,6 +25,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from verdict.models.trace_schemas import TraceStep
+
 
 class FailureMode(StrEnum):
     """Taxonomy of ways an agent can fail an evaluation."""
@@ -126,6 +128,11 @@ class ExecutionResult(BaseModel):
     model_used: str | None = Field(
         default=None,
         description="Actual model string the adapter used (e.g., 'claude-sonnet-4-6'). Useful when adapters select models dynamically.",
+    )
+    steps: list[TraceStep] | None = Field(
+        default=None,
+        description="The agent's trajectory (tool calls etc.) for this response, if the "
+        "adapter reports it. Enables trajectory checks in `verdict diff` (v0.7+).",
     )
 
     @field_validator("latency_ms")
