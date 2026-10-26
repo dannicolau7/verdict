@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class JudgeConfig(BaseModel):
@@ -52,6 +52,18 @@ class StatsConfig(BaseModel):
     method: Literal["fisher", "bootstrap"] = "fisher"
     bootstrap_iterations: int = Field(default=2000, ge=100)
     seed: int = 0
+    k: list[int] = Field(
+        default_factory=list,
+        description="k values for pass@k and pass^k; empty = [runs]. Values above runs are skipped.",
+    )
+    power: float = Field(default=0.8, gt=0.0, lt=1.0, description="For the detectable-drop check.")
+
+    @field_validator("k")
+    @classmethod
+    def _k_positive(cls, v: list[int]) -> list[int]:
+        if any(k < 1 for k in v):
+            raise ValueError("k values must be >= 1")
+        return sorted(set(v))
 
 
 class DiffConfig(BaseModel):

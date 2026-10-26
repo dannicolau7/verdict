@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from verdict.ci.comment import COMMENT_MARKER, render_json, render_markdown
 from verdict.ci.config import GateConfig, StatsConfig
 from verdict.ci.diff import DiffResult, GateResult, Outcome, analyze, judge_side
@@ -152,3 +154,50 @@ def test_judge_side_skips_errored_results():
     assert [(o.case_id, o.passed, o.error) for o in out] == [
         ("a", True, None), ("b", False, "TimeoutError: slow"),
     ]
+
+
+def test_consistency_stats_and_flaky_cases():
+    cases = [_case("solid"), _case("flaky"), _case("broken")]
+    base = _outcomes("solid", 10) + _outcomes("flaky", 10) + _outcomes("broken", 10)
+    head = _outcomes("solid", 10) + _outcomes("flaky", 7) + _outcomes("broken", 0)
+    r = _result(cases, base, head)
+    by_id = {c.case_id: c for c in r.cases}
+    assert by_id["flaky"].head.flaky and not by_id["solid"].head.flaky
+    assert not by_id["broken"].head.flaky  # consistently failing is not flaky
+    assert by_id["flaky"].head.pass_hat_k == {"10": 0.0}
+    assert by_id["flaky"].head.pass_at_k == {"10": 1.0}
+    assert r.suite.head.flaky_cases == 1 and r.suite.base.flaky_cases == 0
+    assert r.suite.head.pass_hat_k["10"] == pytest.approx(1 / 3)
+    assert [c.case_id for c in r.flaky_on_head] == ["flaky"]
+    md = render_markdown(r)
+    assert "| `flaky` | 7/10 flaky |" in md
+    assert "| pass^10 (all 10 pass) | 100% | 33% |" in md
+    assert "| Flaky cases | 0 | 1 | |" in md
+
+
+def test_custom_k_values_skip_k_above_runs():
+    cases = [_case("a")]
+    r = _result(cases, _outcomes("a", 8), _outcomes("a", 8), stats=StatsConfig(k=[1, 3, 50]))
+    assert set(r.cases[0].head.pass_hat_k) == {"1", "3"}
+    assert r.cases[0].head.pass_hat_k["3"] == pytest.approx(56 / 120)
+
+
+def test_power_warning_when_underpowered():
+    cases = [_case(c) for c in "abcd"]
+    base = [o for c in "abcd" for o in _outcomes(c, 9)]
+    head = [o for c in "abcd" for o in _outcomes(c, 9)]
+    r = _result(cases, base, head)  # 40 obs per side at 90% can't see a 5 pt drop
+    power = [c for c in r.gate.checks if c.name == "power"]
+    assert power and power[0].warning and not power[0].breached
+    assert r.gate.passed
+    assert r.suite.min_detectable_drop is None or r.suite.min_detectable_drop > 0.05
+    assert "⚠️ underpowered" in render_markdown(r)
+
+
+def test_no_power_warning_when_suite_is_big_enough():
+    ids = [f"c{i}" for i in range(80)]
+    cases = [_case(c) for c in ids]
+    base = [o for c in ids for o in _outcomes(c, 9)]
+    r = _result(cases, base, base, gate=GateConfig(max_pass_rate_drop=0.10))
+    assert r.suite.min_detectable_drop < 0.10
+    assert not any(c.name == "power" for c in r.gate.checks)

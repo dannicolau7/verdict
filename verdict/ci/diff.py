@@ -30,6 +30,7 @@ from verdict.ci import git
 from verdict.ci.config import DiffConfig, GateConfig, StatsConfig, match_watch
 from verdict.ci.suite import load_suite
 from verdict.models.schemas import ExecutionResult, FailureMode, Judgment, TestPrompt
+from verdict.stats.nondeterminism import is_flaky, min_detectable_drop, pass_at_k, pass_hat_k
 from verdict.stats.proportions import bootstrap_diff, fisher_exact, wilson_interval
 
 JudgeFn = Callable[[list[TestPrompt], list[ExecutionResult]], list[Judgment]]
@@ -61,6 +62,12 @@ class SideStats(BaseModel):
     errors: int = 0
     mean_latency_ms: float | None = None
     mean_cost_usd: float | None = None
+    # Non-determinism (keys are k as strings). Per case: estimates from this case's runs.
+    # Per suite: the mean over cases.
+    pass_at_k: dict[str, float] = Field(default_factory=dict)
+    pass_hat_k: dict[str, float] = Field(default_factory=dict)
+    flaky: bool | None = Field(default=None, description="Case level: passed and failed.")
+    flaky_cases: int | None = Field(default=None, description="Suite level: flaky case count.")
 
 
 class CaseDiff(BaseModel):
@@ -87,12 +94,19 @@ class SuiteDiff(BaseModel):
     delta_ci_high: float | None = None
     cost_delta_pct: float | None = None
     latency_delta_pct: float | None = None
+    min_detectable_drop: float | None = Field(
+        default=None,
+        description="Smallest pass-rate drop this many runs can detect at the gate's "
+        "significance and stats.power (normal approximation). None = no drop detectable.",
+    )
+    power: float | None = None
 
 
 class GateCheck(BaseModel):
     name: str
     breached: bool
     detail: str
+    warning: bool = Field(default=False, description="Advisory only; never fails the gate.")
 
 
 class GateResult(BaseModel):
@@ -132,6 +146,10 @@ class DiffResult(BaseModel):
         return [c for c in self.cases if c.status == "improved"]
 
     @property
+    def flaky_on_head(self) -> list[CaseDiff]:
+        return [c for c in self.cases if c.head.flaky]
+
+    @property
     def failing_on_head(self) -> list[CaseDiff]:
         return [c for c in self.cases if c.head.passed < c.head.n]
 
@@ -157,6 +175,34 @@ def _side_stats(outcomes: list[Outcome]) -> SideStats:
         # Only report cost when every run reported it; a partial mean would mislead.
         mean_cost_usd=sum(costs) / n if n and len(costs) == n else None,
     )
+
+
+def _with_consistency(s: SideStats, ks: list[int]) -> SideStats:
+    """Add case-level pass@k / pass^k / flaky to a case's SideStats."""
+    if s.n == 0:
+        return s
+    valid = [k for k in ks if k <= s.n]
+    s.pass_at_k = {str(k): pass_at_k(s.n, s.passed, k) for k in valid}
+    s.pass_hat_k = {str(k): pass_hat_k(s.n, s.passed, k) for k in valid}
+    s.flaky = is_flaky(s.n, s.passed)
+    return s
+
+
+def _suite_consistency(s: SideStats, per_case: list[SideStats]) -> SideStats:
+    """Suite-level pass@k / pass^k = mean over cases that have that k; flaky count."""
+    for attr in ("pass_at_k", "pass_hat_k"):
+        keys = sorted({k for c in per_case for k in getattr(c, attr)}, key=int)
+        setattr(
+            s,
+            attr,
+            {
+                k: sum(getattr(c, attr)[k] for c in per_case if k in getattr(c, attr))
+                / sum(1 for c in per_case if k in getattr(c, attr))
+                for k in keys
+            },
+        )
+    s.flaky_cases = sum(1 for c in per_case if c.flaky)
+    return s
 
 
 def _compare(
@@ -191,12 +237,15 @@ def analyze(
 ) -> tuple[SuiteDiff, list[CaseDiff], GateResult]:
     """Compute suite- and case-level comparisons and evaluate the gate."""
     alpha = gate.significance
+    runs = max((sum(1 for o in base if o.case_id == c.id) for c in cases), default=0)
+    ks = stats.k or ([runs] if runs else [])
 
     case_diffs: list[CaseDiff] = []
     for case in cases:
         b = [o for o in base if o.case_id == case.id]
         h = [o for o in head if o.case_id == case.id]
-        bs, hs = _side_stats(b), _side_stats(h)
+        bs = _with_consistency(_side_stats(b), ks)
+        hs = _with_consistency(_side_stats(h), ks)
         p, _, _ = _compare(b, h, stats)
         delta = hs.pass_rate - bs.pass_rate
         status: Literal["regressed", "improved", "unchanged"] = "unchanged"
@@ -227,7 +276,8 @@ def analyze(
             )
         )
 
-    bs, hs = _side_stats(base), _side_stats(head)
+    bs = _suite_consistency(_side_stats(base), [c.base for c in case_diffs])
+    hs = _suite_consistency(_side_stats(head), [c.head for c in case_diffs])
     p, dlo, dhi = _compare(base, head, stats)
     suite = SuiteDiff(
         base=bs,
@@ -238,6 +288,8 @@ def analyze(
         delta_ci_high=dhi,
         cost_delta_pct=_pct_change(bs.mean_cost_usd, hs.mean_cost_usd),
         latency_delta_pct=_pct_change(bs.mean_latency_ms, hs.mean_latency_ms),
+        min_detectable_drop=min_detectable_drop(bs.pass_rate, bs.n, alpha, stats.power),
+        power=stats.power,
     )
     return suite, case_diffs, evaluate_gate(suite, case_diffs, gate)
 
@@ -257,6 +309,23 @@ def evaluate_gate(suite: SuiteDiff, cases: list[CaseDiff], gate: GateConfig) -> 
             ),
         )
     )
+
+    mdd = suite.min_detectable_drop
+    if mdd is None or mdd > gate.max_pass_rate_drop:
+        reach = "no drop" if mdd is None else f"only drops ≥ {mdd * 100:.1f} pts"
+        checks.append(
+            GateCheck(
+                name="power",
+                breached=False,
+                warning=True,
+                detail=(
+                    f"underpowered: {suite.base.n} observations per side can detect {reach} "
+                    f"at {suite.power or 0.8:.0%} power, but the gate allows "
+                    f"{gate.max_pass_rate_drop * 100:.1f} pts. Add runs or cases "
+                    "(see `verdict sample-size`)."
+                ),
+            )
+        )
 
     if gate.cost_increase_max is not None:
         if suite.cost_delta_pct is None:
