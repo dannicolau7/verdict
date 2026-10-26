@@ -1,0 +1,27 @@
+# Copy to .github/workflows/ in a repo that has skills/ and evals/skills/.
+# Commit verdict-skills-baseline.json after the first `verdict skills --update-baseline`.
+name: skill-regression
+
+on:
+  pull_request:
+    paths: ["skills/**", "evals/skills/**"]
+  schedule:
+    - cron: "17 11 * * 1"   # weekly canary: hosted models change without notice
+  workflow_dispatch:
+
+jobs:
+  skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install verdict-eval
+      - run: verdict skills --runs 3
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verdict-skills
+          path: verdict-skills.*
