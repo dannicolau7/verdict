@@ -78,7 +78,8 @@ gate:
   significance: 0.05         # … and the drop is significant (p < 0.05)
   cost_increase_max: 0.20    # fail if mean cost per run rises > 20%
 # optional: gate.latency_increase_max, gate.fail_on_case_regression,
-#           stats: { method: fisher | bootstrap, bootstrap_iterations, seed }
+#           stats: { method: fisher | bootstrap, bootstrap_iterations, seed,
+#                    k: [1, 5, 10], power: 0.8 }
 ```
 
 `evals/core.jsonl` holds one case per line:
@@ -95,7 +96,13 @@ How it works:
 3. Judges every response with the same judge, then reports per-suite and per-case
    pass rate with a Wilson 95% CI, a significance test (Fisher's exact by default,
    bootstrap optional), and cost and latency deltas.
-4. Writes `verdict-diff.md` (a PR comment: verdict, regressions, failing cases,
+4. Reports non-determinism from the same runs: per-case and suite **pass@k** (passes
+   at least once in k tries: can the agent do it?) and **pass^k** (passes all k tries:
+   does it do it reliably?), and flags **flaky** cases that both passed and failed.
+   k defaults to `runs`; set `stats.k` for others.
+5. Warns (without failing) when the suite is **underpowered**: when `runs × cases`
+   can't reliably detect a drop as small as `max_pass_rate_drop`.
+6. Writes `verdict-diff.md` (a PR comment: verdict, regressions, failing cases,
    summary) and `verdict-diff.json`, and exits **2** if the gate is breached.
 
 | Flag | Default | Description |
@@ -112,6 +119,22 @@ In GitHub Actions, check out with `fetch-depth: 0` so the base ref is available.
 
 The older adapter-vs-adapter mode still works:
 `verdict diff --target-a simple_rag --target-b path/to/v2.py:V2Adapter --num 10`.
+
+### `verdict sample-size`
+
+**How many runs do you need?** Agents are non-deterministic, so a small suite can't
+tell a real 5-point drop from noise.
+
+```bash
+verdict sample-size --baseline 0.9                 # drop, alpha, power, cases from verdict.yaml
+verdict sample-size --baseline 0.9 --drop 0.05 --cases 20
+# To detect 90% → 85% (α=0.05, power 80%, two-sided):
+#   686 observations (case-runs) per side
+#   = runs: 35 with 20 cases
+```
+
+It uses the normal approximation to a two-sided two-proportion test. Runs of the same
+case are correlated, so adding distinct cases buys more than adding runs.
 
 ### `verdict calibrate`
 

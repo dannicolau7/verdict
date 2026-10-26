@@ -96,7 +96,8 @@ def render_markdown(result: DiffResult) -> str:
         ]
         for c in failing[:_MAX_ROWS]:
             why = _cell(c.head_failures[0]) if c.head_failures else "—"
-            lines.append(f"| `{_cell(c.case_id, 40)}` | {_runs(c.head)} | {why} |")
+            head = f"{_runs(c.head)} flaky" if c.head.flaky else _runs(c.head)
+            lines.append(f"| `{_cell(c.case_id, 40)}` | {head} | {why} |")
         if len(failing) > _MAX_ROWS:
             lines.append(f"| … | | {len(failing) - _MAX_ROWS} more in the JSON report |")
         lines.append("")
@@ -118,13 +119,21 @@ def render_markdown(result: DiffResult) -> str:
             f"| Latency / run | {suite.base.mean_latency_ms:.0f} ms "
             f"| {suite.head.mean_latency_ms:.0f} ms | {_pct(suite.latency_delta_pct)} |"
         )
+    k_max = max((int(k) for k in suite.head.pass_hat_k), default=1)
+    if k_max > 1 and str(k_max) in suite.base.pass_hat_k:
+        bk, hk = suite.base.pass_hat_k[str(k_max)], suite.head.pass_hat_k[str(k_max)]
+        lines.append(f"| pass^{k_max} (all {k_max} pass) | {bk:.0%} | {hk:.0%} | {_pts(hk - bk)} |")
+        ba, ha = suite.base.pass_at_k[str(k_max)], suite.head.pass_at_k[str(k_max)]
+        lines.append(f"| pass@{k_max} (any pass) | {ba:.0%} | {ha:.0%} | {_pts(ha - ba)} |")
+    if suite.base.flaky_cases is not None and suite.head.flaky_cases is not None:
+        lines.append(f"| Flaky cases | {suite.base.flaky_cases} | {suite.head.flaky_cases} | |")
     if suite.base.errors or suite.head.errors:
         lines.append(f"| Errors | {suite.base.errors} | {suite.head.errors} | |")
     lines.append("")
 
     passed_checks = [c for c in result.gate.checks if not c.breached]
     if passed_checks:
-        lines += [f"✅ {c.detail}  " for c in passed_checks]
+        lines += [f"{'⚠️' if c.warning else '✅'} {c.detail}  " for c in passed_checks]
         lines.append("")
 
     lines += [

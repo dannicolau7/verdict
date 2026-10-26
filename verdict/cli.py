@@ -4,6 +4,7 @@ Commands:
     verdict eval        Run a full evaluation against a target adapter.
     verdict diff        Did this change make my agent worse? (--base/--head git refs)
     verdict calibrate   How well does the judge agree with human labels?
+    verdict sample-size How many runs does verdict diff need to catch a regression?
     verdict flakiness   Analyze historical run variance for a target system.
     verdict compliance  Map an eval report to HIPAA + NIST AI RMF controls.
 
@@ -416,6 +417,9 @@ def _git_diff(
         f"({s.delta * 100:+.1f} pts, p={s.p_value:.3g}); "
         f"{len(result.regressions)} regressed, {len(result.improvements)} improved."
     )
+    for check in result.gate.checks:
+        if check.warning:
+            console.print(f"[yellow]⚠ {check.detail}[/yellow]")
     if not result.gate.passed:
         console.print("[bold red]Gate breached:[/bold red]")
         for check in result.gate.breaches:
@@ -517,6 +521,98 @@ def calibrate_cmd(
         sys.exit(2)
     if min_kappa is not None:
         console.print(f"[bold green]✓ kappa ≥ {min_kappa:g}[/bold green]")
+
+
+# ---------------------------------------------------------------------------
+# verdict sample-size
+# ---------------------------------------------------------------------------
+
+
+@main.command("sample-size")
+@click.option(
+    "--baseline", type=float, required=True, help="Expected pass rate today, e.g. 0.9."
+)
+@click.option(
+    "--drop", type=float, default=None, help="Drop to detect [default: gate.max_pass_rate_drop or 0.05]."
+)
+@click.option("--alpha", type=float, default=None, help="Significance [default: gate or 0.05].")
+@click.option("--power", type=float, default=None, help="Power [default: stats.power or 0.8].")
+@click.option("--cases", type=int, default=None, help="Cases in the suite [default: count suite].")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(),
+    default=None,
+    help="verdict.yaml for defaults [default: ./verdict.yaml if present].",
+)
+def sample_size_cmd(
+    baseline: float,
+    drop: float | None,
+    alpha: float | None,
+    power: float | None,
+    cases: int | None,
+    config_path: str | None,
+) -> None:
+    """How many runs does `verdict diff` need to catch a regression?
+
+    \b
+        verdict sample-size --baseline 0.9                # defaults from verdict.yaml
+        verdict sample-size --baseline 0.9 --drop 0.05 --cases 40
+
+    Prints the observations (case-runs) needed per side to detect a pass-rate drop
+    of --drop with a two-sided test at --alpha and --power, the runs per case that
+    implies, and the drop your current `runs` setting can detect.
+    """
+    from verdict.ci.config import ConfigError, load_config
+    from verdict.ci.suite import SuiteError, load_suite
+    from verdict.stats.nondeterminism import min_detectable_drop, runs_needed
+
+    configured_runs: int | None = None
+    path = config_path or ("verdict.yaml" if Path("verdict.yaml").is_file() else None)
+    if path is not None:
+        try:
+            config = load_config(path)
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+        drop = drop if drop is not None else config.gate.max_pass_rate_drop
+        alpha = alpha if alpha is not None else config.gate.significance
+        power = power if power is not None else config.stats.power
+        configured_runs = config.runs
+        if cases is None:
+            try:
+                cases = len(load_suite(config.suite_path))
+            except SuiteError:
+                cases = None
+    drop = 0.05 if drop is None else drop
+    alpha = 0.05 if alpha is None else alpha
+    power = 0.8 if power is None else power
+
+    try:
+        n = runs_needed(baseline, drop, alpha, power)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+
+    console.print(
+        f"To detect {baseline:.0%} → {baseline - drop:.0%} "
+        f"(α={alpha:g}, power {power:.0%}, two-sided):"
+    )
+    console.print(f"  [bold]{n}[/bold] observations (case-runs) per side")
+    if cases:
+        per_case = -(-n // cases)
+        console.print(f"  = [bold]runs: {per_case}[/bold] with {cases} cases")
+        if configured_runs is not None:
+            have = configured_runs * cases
+            mdd = min_detectable_drop(baseline, have, alpha, power)
+            reach = "no drop" if mdd is None else f"drops ≥ {mdd * 100:.1f} pts"
+            status = "[green]enough[/green]" if have >= n else "[yellow]not enough[/yellow]"
+            console.print(
+                f"  verdict.yaml has runs: {configured_runs} → {have} per side ({status}; "
+                f"detects {reach})"
+            )
+    console.print(
+        "[dim]Normal approximation; Fisher's exact is slightly more conservative. Runs of "
+        "the same case are correlated, so more distinct cases beat more runs.[/dim]"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Non-determinism stats in `verdict diff`**, from the runs it already does:
+  per-case and suite pass@k and pass^k (unbiased estimators; k defaults to `runs`,
+  configurable as `stats.k`), flaky-case detection (a case that both passed and
+  failed), and the minimum detectable drop for the suite's size. The gate adds a
+  non-blocking "underpowered" warning when `runs × cases` can't detect
+  `max_pass_rate_drop` at `stats.power` (default 0.8).
+- **`verdict sample-size`** — observations and runs per case needed to detect a
+  given pass-rate drop; reads defaults from `verdict.yaml` and reports whether the
+  configured `runs` is enough.
+- `verdict.stats.nondeterminism`: `pass_at_k`, `pass_hat_k`, `is_flaky`,
+  `runs_needed`, `min_detectable_drop`.
+
 ## [0.6.0] — 2026-10-26
 
 ### Added
