@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`verdict import`** — draft eval cases from production traces: Verdict
+  `AgentTrace` JSON, generic JSONL, OpenTelemetry OTLP/JSON (GenAI and OpenInference
+  attributes) or LangSmith run exports (auto-detected; stdlib only). Drafts go to a
+  JSONL file as `pending`, with a proposed expected behavior (Claude, or a TODO with
+  `--no-llm`), an `expected_trajectory` from observed tools when they passed the
+  trajectory checks, and the observed output and findings for the reviewer. Trace text
+  is escaped and treated as data by the drafter. Re-imports don't duplicate drafts.
+- **`verdict review`** — approve, edit, reject or skip drafts interactively (or
+  `--apply` hand-approved ones); approved drafts are appended to the suite.
+
 ## [0.7.0] — 2026-10-26
 
 ### Added

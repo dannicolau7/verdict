@@ -126,6 +126,37 @@ In GitHub Actions, check out with `fetch-depth: 0` so the base ref is available.
 The older adapter-vs-adapter mode still works:
 `verdict diff --target-a simple_rag --target-b path/to/v2.py:V2Adapter --num 10`.
 
+### `verdict import` and `verdict review`
+
+**Turn production traces into eval cases.** An agent drafts the cases; a person
+approves each one before it reaches the suite.
+
+```bash
+verdict import traces.otlp.json             # OpenTelemetry OTLP/JSON (GenAI or OpenInference)
+verdict import runs.jsonl                   # LangSmith run export (format auto-detected)
+verdict import logs.jsonl --no-llm          # generic JSONL; rule-based drafts, no API calls
+verdict review evals/drafts.jsonl --suite evals/core.jsonl
+```
+
+`verdict import` reads Verdict `AgentTrace` JSON, generic JSONL (`input`/`prompt`/
+`messages`, `output`/`response`, optional `tool_calls`), OTLP/JSON, or LangSmith runs.
+For each trace it drafts a case into `evals/drafts.jsonl` with status `pending`:
+the prompt, a proposed `expected_behavior`, category and severity, an
+`expected_trajectory` from the observed tool calls (only when those passed the
+trajectory checks), and what the reviewer needs (observed output, tools, findings).
+Re-importing the same traces doesn't duplicate drafts.
+
+Drafting uses Claude (`--draft-model`, default the generator model). The trace is
+wrapped in escaped `<trace>` tags and treated as data, so a trace that says
+"ignore your instructions" can't steer the drafter. With `--no-llm`, `expected_behavior`
+is a TODO the reviewer fills in.
+
+`verdict review` walks the pending drafts: **a**pprove, **e**dit (expected behavior,
+category, severity), **r**eject, **s**kip, **q**uit. A draft whose expected behavior is
+still a TODO can't be approved. Approved drafts are appended to the suite. You can also
+edit `drafts.jsonl` by hand, set `"status": "approved"`, and run
+`verdict review … --apply`.
+
 ### `verdict trajectory`
 
 **Did the agent use its tools correctly?** Deterministic checks over recorded
