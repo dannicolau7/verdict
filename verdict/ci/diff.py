@@ -29,7 +29,9 @@ from pydantic import BaseModel, Field
 from verdict.ci import git
 from verdict.ci.config import DiffConfig, GateConfig, StatsConfig, match_watch
 from verdict.ci.suite import load_suite
+from verdict.evals.trajectory import TrajectoryFinding, TrajectoryResult, check_trajectory
 from verdict.models.schemas import ExecutionResult, FailureMode, Judgment, TestPrompt
+from verdict.models.trace_schemas import TrajectoryExpectation
 from verdict.stats.nondeterminism import is_flaky, min_detectable_drop, pass_at_k, pass_hat_k
 from verdict.stats.proportions import bootstrap_diff, fisher_exact, wilson_interval
 
@@ -51,6 +53,10 @@ class Outcome(BaseModel):
     error: str | None = None
     latency_ms: float = 0.0
     cost_usd: float | None = None
+    n_steps: int | None = None
+    n_tool_calls: int | None = None
+    trajectory_errors: list[str] = Field(default_factory=list)
+    trajectory_warnings: list[str] = Field(default_factory=list)
 
 
 class SideStats(BaseModel):
@@ -68,6 +74,10 @@ class SideStats(BaseModel):
     pass_hat_k: dict[str, float] = Field(default_factory=dict)
     flaky: bool | None = Field(default=None, description="Case level: passed and failed.")
     flaky_cases: int | None = Field(default=None, description="Suite level: flaky case count.")
+    # Trajectory (None when the adapter reports no steps).
+    mean_steps: float | None = None
+    mean_tool_calls: float | None = None
+    trajectory_failures: int = Field(default=0, description="Runs failed by trajectory checks.")
 
 
 class CaseDiff(BaseModel):
@@ -94,6 +104,7 @@ class SuiteDiff(BaseModel):
     delta_ci_high: float | None = None
     cost_delta_pct: float | None = None
     latency_delta_pct: float | None = None
+    steps_delta_pct: float | None = None
     min_detectable_drop: float | None = Field(
         default=None,
         description="Smallest pass-rate drop this many runs can detect at the gate's "
@@ -164,9 +175,15 @@ def _side_stats(outcomes: list[Outcome]) -> SideStats:
     k = sum(1 for o in outcomes if o.passed)
     lo, hi = wilson_interval(k, n)
     costs = [o.cost_usd for o in outcomes if o.cost_usd is not None]
+    traced = [o for o in outcomes if o.n_steps is not None]
     return SideStats(
         n=n,
         passed=k,
+        mean_steps=sum(o.n_steps or 0 for o in traced) / len(traced) if traced else None,
+        mean_tool_calls=(
+            sum(o.n_tool_calls or 0 for o in traced) / len(traced) if traced else None
+        ),
+        trajectory_failures=sum(1 for o in outcomes if o.trajectory_errors),
         pass_rate=k / n if n else 0.0,
         ci_low=lo,
         ci_high=hi,
@@ -288,6 +305,7 @@ def analyze(
         delta_ci_high=dhi,
         cost_delta_pct=_pct_change(bs.mean_cost_usd, hs.mean_cost_usd),
         latency_delta_pct=_pct_change(bs.mean_latency_ms, hs.mean_latency_ms),
+        steps_delta_pct=_pct_change(bs.mean_steps, hs.mean_steps),
         min_detectable_drop=min_detectable_drop(bs.pass_rate, bs.n, alpha, stats.power),
         power=stats.power,
     )
@@ -351,6 +369,15 @@ def evaluate_gate(suite: SuiteDiff, cases: list[CaseDiff], gate: GateConfig) -> 
             )
         )
 
+    if gate.steps_increase_max is not None and suite.steps_delta_pct is not None:
+        checks.append(
+            GateCheck(
+                name="steps",
+                breached=suite.steps_delta_pct > gate.steps_increase_max,
+                detail=f"steps/run {suite.steps_delta_pct:+.1%} (max +{gate.steps_increase_max:.0%})",
+            )
+        )
+
     if gate.fail_on_case_regression:
         n_reg = sum(1 for c in cases if c.status == "regressed")
         checks.append(
@@ -384,6 +411,30 @@ def llm_judge(model: str | None) -> JudgeFn:
     return _judge
 
 
+def _expectation(case: TestPrompt) -> TrajectoryExpectation | None:
+    raw = case.metadata.get("expected_trajectory")
+    return TrajectoryExpectation(**raw) if raw else None
+
+
+def _trajectory(case: TestPrompt, res: ExecutionResult) -> TrajectoryResult | None:
+    """Trajectory checks for one response, or None if there is nothing to check."""
+    expectation = _expectation(case)
+    if res.steps is None:
+        if expectation is None:
+            return None
+        return TrajectoryResult(
+            passed=False,
+            findings=[
+                TrajectoryFinding(
+                    check="no_trajectory",
+                    severity="error",
+                    detail="case has expected_trajectory but the adapter reported no steps",
+                )
+            ],
+        )
+    return check_trajectory(res.steps, res.response, expectation)
+
+
 def judge_side(
     cases: list[TestPrompt],
     runs: list[list[ExecutionResult]],
@@ -392,29 +443,48 @@ def judge_side(
 ) -> list[Outcome]:
     """Judge every run of one side, runs in parallel threads.
 
-    Errored executions count as failures without a judge call.
+    Errored executions, and responses whose trajectory checks fail, count as
+    failures without a judge call.
     """
     def one_run(idx: int, results: list[ExecutionResult]) -> list[Outcome]:
-        to_judge = [(c, r) for c, r in zip(cases, results) if r.error is None]
+        trajs = [_trajectory(c, r) if r.error is None else None for c, r in zip(cases, results)]
+        to_judge = [
+            (c, r)
+            for c, r, t in zip(cases, results, trajs)
+            if r.error is None and (t is None or t.passed)
+        ]
         judgments = judge([c for c, _ in to_judge], [r for _, r in to_judge]) if to_judge else []
         by_id = {j.prompt_id: j for j in judgments}
         out: list[Outcome] = []
-        for case, res in zip(cases, results):
+        for case, res, traj in zip(cases, results, trajs):
             j = by_id.get(case.id)
+            traj_errors = [f.detail for f in traj.errors] if traj else []
+            failure_mode: str | None
+            if traj_errors:
+                reasoning = f"trajectory: {traj_errors[0]}"
+                fm = traj.errors[0].failure_mode if traj else None
+                failure_mode = fm.value if fm else FailureMode.other.value
+            else:
+                reasoning = j.reasoning if j else ""
+                failure_mode = (
+                    j.failure_mode.value
+                    if j and j.failure_mode
+                    else (FailureMode.other.value if res.error else None)
+                )
             out.append(
                 Outcome(
                     case_id=case.id,
                     run=idx,
-                    passed=bool(j and j.passed and res.error is None),
-                    reasoning=j.reasoning if j else "",
-                    failure_mode=(
-                        j.failure_mode.value
-                        if j and j.failure_mode
-                        else (FailureMode.other.value if res.error else None)
-                    ),
+                    passed=bool(j and j.passed and res.error is None and not traj_errors),
+                    reasoning=reasoning,
+                    failure_mode=failure_mode,
                     error=res.error,
                     latency_ms=res.latency_ms,
                     cost_usd=res.estimated_cost_usd,
+                    n_steps=traj.n_steps if traj and res.steps is not None else None,
+                    n_tool_calls=traj.n_tool_calls if traj and res.steps is not None else None,
+                    trajectory_errors=traj_errors,
+                    trajectory_warnings=[f.detail for f in traj.warnings] if traj else [],
                 )
             )
         return out

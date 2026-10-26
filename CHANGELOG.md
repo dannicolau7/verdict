@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Trajectory evals.** `verdict trajectory --traces-dir …` checks recorded
+  `AgentTrace`s deterministically (no LLM): expected tool sequence (`exact` /
+  `in_order` / `unordered`), forbidden tools, argument matchers (`$contains`, `$regex`,
+  `$any`), step and tool-call limits, and required output text, plus always-on checks
+  for crashes, empty output, unknown tools, swallowed tool errors, empty tool results
+  and repeated calls. Reports tool recall/precision; exits 2 below `--min-pass-rate`.
+- **Trajectories in `verdict diff`.** Adapters can return their steps
+  (`make_result(..., steps=...)`) and suite cases can carry `expected_trajectory`.
+  A trajectory failure fails the run without a judge call; steps and tool calls per
+  run are compared, with an optional `gate.steps_increase_max`.
+- `AgentTrace.expected_trajectory` and `ExecutionResult.steps` (optional fields).
+
 - **Non-determinism stats in `verdict diff`**, from the runs it already does:
   per-case and suite pass@k and pass^k (unbiased estimators; k defaults to `runs`,
   configurable as `stats.k`), flaky-case detection (a case that both passed and

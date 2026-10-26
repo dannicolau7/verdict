@@ -74,6 +74,42 @@ class TraceStep(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ArgExpectation(BaseModel):
+    """Arguments that at least one call of ``tool`` must have.
+
+    Each value is matched literally, or with an operator object:
+    ``{"$contains": "text"}`` (case-insensitive substring), ``{"$regex": "pattern"}``
+    (re.search) or ``{"$any": true}`` (present with any value).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool: str
+    args: dict[str, Any]
+
+
+class TrajectoryExpectation(BaseModel):
+    """What a correct trajectory looks like. Every field is optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tools: list[str] | None = Field(
+        default=None, description="Expected tool calls, compared using `match`."
+    )
+    match: Literal["exact", "in_order", "unordered"] = Field(
+        default="in_order",
+        description="exact: identical sequence; in_order: expected is a subsequence "
+        "(extra calls allowed); unordered: every expected call appears.",
+    )
+    forbidden_tools: list[str] = Field(default_factory=list)
+    args: list[ArgExpectation] = Field(default_factory=list)
+    max_tool_calls: int | None = Field(default=None, ge=0)
+    max_steps: int | None = Field(default=None, ge=1)
+    output_contains: list[str] = Field(
+        default_factory=list, description="Case-insensitive substrings the final output needs."
+    )
+
+
 class AgentTrace(BaseModel):
     """A recorded step-by-step execution log from an agent run."""
 
@@ -102,6 +138,10 @@ class AgentTrace(BaseModel):
     )
     error: str | None = Field(
         default=None, description="Top-level error if the agent crashed."
+    )
+    expected_trajectory: TrajectoryExpectation | None = Field(
+        default=None,
+        description="Deterministic expectations checked by `verdict trajectory` (v0.7+).",
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(
