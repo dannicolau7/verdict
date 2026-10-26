@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-26
+
 ### Added
 
 - **Trajectory evals.** `verdict trajectory --traces-dir …` checks recorded
@@ -20,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A trajectory failure fails the run without a judge call; steps and tool calls per
   run are compared, with an optional `gate.steps_increase_max`.
 - `AgentTrace.expected_trajectory` and `ExecutionResult.steps` (optional fields).
-
 - **Non-determinism stats in `verdict diff`**, from the runs it already does:
   per-case and suite pass@k and pass^k (unbiased estimators; k defaults to `runs`,
   configurable as `stats.k`), flaky-case detection (a case that both passed and
