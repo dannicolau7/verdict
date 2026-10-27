@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Works with current Claude models.** Responses are read by block type, not
+  `content[0]`: current models think by default, so the first block can be a thinking
+  block and every judgment came back as a judge error. No sampling parameters
+  (`temperature`) are sent, since current models reject them with a 400. `max_tokens`
+  raised to 16000 so thinking doesn't truncate answers.
+- Default models move to the current generation of the same tier: Sonnet 4.6 →
+  `claude-sonnet-5-5` (generator, judge, reporter), Haiku 4.5 → `claude-haiku-5-5`
+  (executor).
+- Pricing table: current models added (Fable 5/5.1, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5,
+  Haiku 5.5); Opus 4.6 and Haiku 4.5 prices corrected.
+
 ## [0.8.0] — 2026-10-26
 
 ### Added

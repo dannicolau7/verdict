@@ -26,6 +26,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from verdict.evals.trajectory import TrajectoryResult, check_trajectory
+from verdict.llm import message_text
 from verdict.models.trace_schemas import AgentTrace
 
 CATEGORIES = ("correctness", "safety", "injection", "edge_case", "compliance")
@@ -147,12 +148,11 @@ def llm_drafter(model: str) -> Drafter:
     def draft(trace: AgentTrace, traj: TrajectoryResult) -> dict[str, Any]:
         msg = client.messages.create(
             model=model,
-            max_tokens=600,
-            temperature=0.2,
+            max_tokens=16000,
             system=DRAFT_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": render_trace(trace, traj)}],
         )
-        text = "".join(getattr(b, "text", "") for b in msg.content)
+        text = message_text(msg)
         return _parse_json_object(text)
 
     return draft

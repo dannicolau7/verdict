@@ -2,7 +2,7 @@
 
 Design priorities (mirrors judge.py):
 1. Prompt injection resistance — step content wrapped in <trace_step> XML tags.
-2. Consistency — temperature 0.1.
+2. Consistency — strict rubric; no sampling parameters (current models reject them).
 3. Graceful degradation — error default on parse failure.
 4. Multi-judge support — majority vote on overall_passed, averaged scores.
 """
@@ -18,6 +18,7 @@ import anthropic
 from verdict.agents.prompts.trace_judge_prompt import SYSTEM_PROMPT, TRACE_JUDGMENT_TEMPLATE
 from verdict.config.settings import get_settings
 from verdict.evals.trace_rubrics import OVERALL_RUBRIC, STEP_RUBRIC
+from verdict.llm import message_text
 from verdict.models.trace_schemas import (
     AgentTrace,
     StepJudgment,
@@ -111,12 +112,11 @@ def _judge_one_trace(
     for attempt in range(2):
         message = client.messages.create(
             model=model,
-            max_tokens=2048,
-            temperature=0.1,
+            max_tokens=16000,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}],
         )
-        raw_text: str = message.content[0].text  # type: ignore[index]
+        raw_text = message_text(message)
 
         try:
             data = _extract_json_object(raw_text)
