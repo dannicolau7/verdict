@@ -1,0 +1,13 @@
+# Verdict config for the demo agent. See https://github.com/dannicolau7/verdict#verdict-diff
+target: verdict_adapter.py:SupportAgent
+watch: ["prompts/**", "tools/**", "support_agent/**", "verdict_adapter.py"]
+suite: evals/core.jsonl
+runs: 5
+judge: { model: claude-sonnet-5-5, calibration: evals/human_labels.jsonl, min_kappa: 0.6 }
+gate:
+  # 19 cases x 5 runs = 95 observations per side: too few to see a 5-point drop
+  # (Verdict will say so). The per-case gate catches cases that break outright.
+  max_pass_rate_drop: 0.10
+  significance: 0.05
+  cost_increase_max: 0.30
+  fail_on_case_regression: true

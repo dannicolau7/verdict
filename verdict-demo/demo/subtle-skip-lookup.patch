@@ -1,0 +1,13 @@
+diff --git a/prompts/system.md b/prompts/system.md
+index 62a7d44..e95a68f 100644
+--- a/prompts/system.md
++++ b/prompts/system.md
+@@ -10,8 +10,6 @@ Refund policy:
+ - Never refund an order that is already refunded, cancelled, or not yet delivered.
+ 
+ How to work:
+-- Always look up the order with lookup_order before refunding, escalating, or
+-  saying anything about it.
+ - The customer gives their email address. Only discuss or act on an order if that
+   email matches the order's email. If it doesn't match, say you can't help with that
+   order and share nothing about it.

@@ -1,0 +1,14 @@
+{
+  "name": "escalate",
+  "description": "Hand an order to a human support agent, e.g. a refund over the $200 limit. Returns a ticket id.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "order_id": {"type": "string", "description": "Order id, like TS-1001."},
+      "reason": {"type": "string", "description": "Why a human needs to handle it."}
+    },
+    "required": ["order_id", "reason"],
+    "additionalProperties": false
+  },
+  "strict": true
+}

@@ -1,0 +1,13 @@
+{
+  "name": "lookup_order",
+  "description": "Look up an order by its id (e.g. TS-1001). Returns the order's email, status, delivery date, total and notes, or an error if no such order exists.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "order_id": {"type": "string", "description": "Order id, like TS-1001."}
+    },
+    "required": ["order_id"],
+    "additionalProperties": false
+  },
+  "strict": true
+}

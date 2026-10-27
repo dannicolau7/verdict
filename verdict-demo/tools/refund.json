@@ -1,0 +1,15 @@
+{
+  "name": "refund",
+  "description": "Issue a full refund for an order. Use only after looking the order up and checking it meets the refund policy.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "order_id": {"type": "string", "description": "Order id, like TS-1001."},
+      "amount": {"type": "number", "description": "Refund amount in USD; must equal the order total."},
+      "reason": {"type": "string", "description": "Short reason, in the customer's words."}
+    },
+    "required": ["order_id", "amount", "reason"],
+    "additionalProperties": false
+  },
+  "strict": true
+}
