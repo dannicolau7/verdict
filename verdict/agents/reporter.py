@@ -27,6 +27,7 @@ import anthropic
 
 from verdict.agents.prompts.reporter_prompt import REPORT_TEMPLATE, SYSTEM_PROMPT
 from verdict.config.settings import get_settings
+from verdict.llm import message_text
 from verdict.models.schemas import EvalReport, Judgment, TestPrompt
 from verdict.reports.builder import build_eval_report
 
@@ -41,8 +42,8 @@ logger = logging.getLogger(__name__)
 def create_reporter(model: str | None = None):  # -> crewai.Agent
     """Return a configured CrewAI Agent for the Reporter role.
 
-    Uses Sonnet at temperature 0.3 — creative enough for varied prose but
-    constrained enough to stay on-topic.
+    Uses the Sonnet-tier reporter model; no sampling parameters, which
+    current models reject.
 
     Args:
         model: Anthropic model ID override.  Defaults to
@@ -54,7 +55,6 @@ def create_reporter(model: str | None = None):  # -> crewai.Agent
     settings = get_settings()
     llm = ChatAnthropic(
         model=model or settings.default_reporter_model,
-        temperature=0.3,
         anthropic_api_key=settings.anthropic_api_key.get_secret_value(),
     )
     return Agent(
@@ -213,11 +213,11 @@ def _call_reporter(
 
     message = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=16000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    return message.content[0].text  # type: ignore[index]
+    return message_text(message)
 
 
 # ---------------------------------------------------------------------------

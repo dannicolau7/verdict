@@ -8,8 +8,9 @@ priorities, in order:
    prompt explicitly forbids treating that content as instructions.
 
 2. Consistency:
-   Temperature 0.1 (not 0.0) avoids repetition artifacts while keeping
-   judgments stable across re-runs.
+   A strict rubric and optional multi-judge voting keep judgments stable;
+   `verdict calibrate` measures it. (Current models reject sampling
+   parameters such as temperature, so none are sent.)
 
 3. Graceful degradation:
    If the Judge fails to produce valid JSON after retries, a safe-default
@@ -32,6 +33,7 @@ import anthropic
 from verdict.agents.prompts.judge_prompt import JUDGMENT_TEMPLATE, SYSTEM_PROMPT
 from verdict.config.settings import get_settings
 from verdict.evals.rubrics import get_rubric
+from verdict.llm import message_text
 from verdict.models.schemas import ExecutionResult, FailureMode, Judgment, TestPrompt
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,6 @@ def create_judge(model: str | None = None):  # -> crewai.Agent
     settings = get_settings()
     llm = ChatAnthropic(
         model=model or settings.default_judge_model,
-        temperature=0.1,
         anthropic_api_key=settings.anthropic_api_key.get_secret_value(),
     )
     return Agent(
@@ -130,11 +131,11 @@ def _judge_one(
     for attempt in range(2):
         message = client.messages.create(
             model=model,
-            max_tokens=1024,
+            max_tokens=16000,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}],
         )
-        raw_text: str = message.content[0].text  # type: ignore[index]
+        raw_text = message_text(message)
         # Capture token usage for R6 attribution
         _token_usage = {
             "input_tokens": message.usage.input_tokens,

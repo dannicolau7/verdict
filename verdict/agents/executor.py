@@ -28,8 +28,8 @@ from verdict.models.schemas import ExecutionResult, TestPrompt
 def create_executor(model: str | None = None):  # -> crewai.Agent
     """Return a configured CrewAI Agent for the Executor role.
 
-    Uses Haiku (cheapest/fastest model) at temperature 0.0 since no
-    generative reasoning is required — just orchestration.
+    Uses Haiku (cheapest/fastest model) since no generative reasoning is
+    required — just orchestration.
 
     Args:
         model: Anthropic model ID override.  Defaults to
@@ -43,7 +43,6 @@ def create_executor(model: str | None = None):  # -> crewai.Agent
     settings = get_settings()
     llm = ChatAnthropic(
         model=model or settings.default_executor_model,
-        temperature=0.0,
         anthropic_api_key=settings.anthropic_api_key.get_secret_value(),
     )
     return Agent(
