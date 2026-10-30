@@ -105,23 +105,48 @@ def scene_title(r: Renderer) -> None:
     r.frame(img, 3.0)
 
 
+def _items(lines: list[str]) -> list[str]:
+    """Join a diff side's lines into bullet items ("- rule" starts a new one)."""
+    items: list[str] = []
+    for ln in lines:
+        text = ln.strip()
+        if not text:
+            continue
+        if text.startswith("- ") or not items:
+            items.append(text.removeprefix("- "))
+        else:
+            items[-1] += " " + text
+    return items
+
+
+def _one_line(d, text: str, font, width: int) -> str:
+    if d.textlength(text, font=font) <= width:
+        return text
+    while text and d.textlength(text + "…", font=font) > width:
+        text = text[:-1]
+    return text.rstrip() + "…"
+
+
 def scene_patch(r: Renderer, patch: str) -> None:
-    removed = [ln[1:].strip() for ln in patch.splitlines()
-               if ln.startswith("-") and not ln.startswith("---")]
-    sentence = " ".join(removed).lstrip("- ").strip()
+    body = [ln for ln in patch.splitlines() if not ln.startswith(("---", "+++"))]
+    removed = _items([ln[1:] for ln in body if ln.startswith("-")])
+    added = _items([ln[1:] for ln in body if ln.startswith("+")])
     img, d = canvas()
-    d.text((PAD, 160), "The change", font=SANS[60], fill=FG)
-    d.text((PAD, 245), "Deleted from the system prompt:", font=SANS[34], fill=MUTED)
-    lines = _wrap(d, sentence, MONO[32], W - 2 * PAD - 40)
-    top, line_h = 340, 50
-    d.rounded_rectangle((PAD - 20, top - 30, W - PAD + 20, top + line_h * len(lines) + 10), 16,
-                        fill=PANEL)
-    d.rectangle((PAD - 20, top - 30, PAD - 12, top + line_h * len(lines) + 10), fill=RED)
-    for i, ln in enumerate(lines):
-        d.text((PAD + 10, top + i * line_h), ln, font=MONO[32], fill=RED)
-    d.text((PAD, top + line_h * len(lines) + 120), "One rule. Reads fine in code review.",
-           font=SANS[44], fill=FG)
-    r.frame(img, 4.5)
+    d.text((PAD, 120), "The change to the system prompt", font=SANS[44], fill=FG)
+    y, width = 220, W - 2 * PAD - 40
+    if added:
+        for ln in _wrap(d, "+ " + " ".join(added), MONO[32], width)[:4]:
+            d.text((PAD, y), ln, font=MONO[32], fill=GREEN)
+            y += 48
+        y += 30
+    label = "1 rule deleted" if len(removed) == 1 else f"{len(removed)} rules deleted"
+    d.text((PAD, y), label, font=SANS[34], fill=MUTED)
+    y += 60
+    for item in removed[:5]:
+        d.text((PAD, y), _one_line(d, "- " + item, MONO[28], width), font=MONO[28], fill=RED)
+        y += 44
+    d.text((PAD, max(y + 70, 820)), "Easy to approve in code review.", font=SANS[44], fill=FG)
+    r.frame(img, 5.0)
 
 
 def scene_command(r: Renderer, result: dict) -> None:
@@ -199,6 +224,12 @@ def main(argv: list[str] | None = None) -> int:
     result = json.loads(args.diff.read_text(encoding="utf-8"))
     if result.get("status") != "completed" or not result.get("suite"):
         print("verdict-diff.json is not a completed run; refusing to render.", file=sys.stderr)
+        return 1
+    broken = [c for c in result["gate"]["checks"] if c["name"] == "run_errors" and c["breached"]]
+    if broken:
+        print("Too many runs failed or went unjudged; refusing to render:", file=sys.stderr)
+        for c in broken:
+            print("  " + c["detail"], file=sys.stderr)
         return 1
     args.out.parent.mkdir(parents=True, exist_ok=True)
     r = Renderer(args.out, args.preview)
