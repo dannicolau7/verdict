@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-10-30
+
 ### Fixed
 
 - **`verdict diff` no longer passes when runs fail.** A new `run_errors` gate check
@@ -15,9 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an exhausted API key) reported 0% → 0% and "Gate passed". Judge errors are now
   counted per side and shown in the PR comment, whose headline says the run is
   incomplete instead of claiming a result.
-
-### Fixed
-
 - **Works with current Claude models.** Responses are read by block type, not
   `content[0]`: current models think by default, so the first block can be a thinking
   block and every judgment came back as a judge error. No sampling parameters
