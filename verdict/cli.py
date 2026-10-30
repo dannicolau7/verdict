@@ -423,6 +423,8 @@ def _git_diff(
     for check in result.gate.checks:
         if check.warning:
             console.print(f"[yellow]⚠ {check.detail}[/yellow]")
+    if result.incomplete:
+        console.print("[bold yellow]Run incomplete: the comparison is not trustworthy.[/bold yellow]")
     if not result.gate.passed:
         console.print("[bold red]Gate breached:[/bold red]")
         for check in result.gate.breaches:
