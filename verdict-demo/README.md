@@ -60,6 +60,19 @@ verdict diff --base main
 Open the change as a PR instead and `.github/workflows/verdict.yml` runs the same
 check in CI. It needs an `ANTHROPIC_API_KEY` repository secret.
 
+## Make a video of it
+
+`demo/run_and_record.sh` applies a regression patch on a throwaway branch, runs
+`verdict diff` against `main` (5 runs by default), and renders
+`out/verdict-demo.mp4`, a 1080×1080 clip of about 25 seconds. Every number in it
+comes from that run's `out/verdict-diff.json`. It needs `ANTHROPIC_API_KEY`, Pillow
+and ffmpeg.
+
+```bash
+pip install pillow
+ANTHROPIC_API_KEY=... demo/run_and_record.sh demo/subtle-skip-lookup.patch
+```
+
 ## Cost
 
 One `verdict diff` makes about `cases × runs × 2` agent runs, each several model
