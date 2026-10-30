@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-10-30
+
 ### Fixed
 
 - **Works with current Claude models.** Responses are read by block type, not
