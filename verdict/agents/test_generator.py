@@ -6,9 +6,9 @@ Design:
     Anthropic API directly — no Crew overhead needed for Phase 2.  D9 will
     wrap this in a CrewAI Crew for CLI use.
 
-    LLM choice: claude-sonnet-4-6 at temperature 0.7.
+    LLM choice: settings.default_generator_model (Sonnet tier).
     - Sonnet gives high-quality, varied prompt text.
-    - Temperature 0.7 balances creativity with coherence.
+    - No sampling parameters: current models reject temperature.
 
 JSON robustness:
     LLMs occasionally wrap JSON in markdown fences or add prose preamble.
@@ -35,6 +35,7 @@ from verdict.agents.prompts.test_generator_prompt import (
 )
 from verdict.config.settings import get_settings
 from verdict.evals.categories import CATEGORIES, get_category
+from verdict.llm import message_text
 from verdict.models.schemas import TestPrompt
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,6 @@ def create_test_generator(model: str | None = None):  # -> crewai.Agent
     settings = get_settings()
     llm = ChatAnthropic(
         model=model or settings.default_generator_model,
-        temperature=0.7,
         anthropic_api_key=settings.anthropic_api_key.get_secret_value(),
     )
     return Agent(
@@ -117,11 +117,11 @@ def _call_generator(client: anthropic.Anthropic, model: str, user_prompt: str) -
     """Call the LLM and return a list of raw dicts (not yet validated)."""
     message = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=16000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    raw_text: str = message.content[0].text  # type: ignore[index]
+    raw_text = message_text(message)
     try:
         return _extract_json_array(raw_text)
     except (ValueError, json.JSONDecodeError) as exc:

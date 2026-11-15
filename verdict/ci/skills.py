@@ -43,6 +43,7 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError
 
 from verdict.ci.diff import JudgeFn, _verdict_version
+from verdict.llm import message_text
 from verdict.models.schemas import ExecutionResult, TestPrompt
 from verdict.stats.proportions import fisher_exact, wilson_interval
 
@@ -155,6 +156,10 @@ def load_skill_suites(tests_dir: str | Path) -> list[SkillSuite]:
 # Model calls (injectable; the defaults hit the Anthropic API)
 # ---------------------------------------------------------------------------
 
+# Current models think by default and reject sampling parameters, so no temperature is sent
+# and the budget leaves room for thinking (same as the judge).
+MAX_TOKENS = 16000
+
 RouterFn = Callable[[list[Skill], str], str | None]
 """Given the available skills and a user prompt, return the skill to load, or None."""
 
@@ -197,13 +202,11 @@ def llm_router(model: str) -> RouterFn:
     def route(skills: list[Skill], prompt: str) -> str | None:
         msg = client.messages.create(
             model=model,
-            max_tokens=100,
-            temperature=0.0,
+            max_tokens=MAX_TOKENS,
             system=ROUTER_SYSTEM.format(catalog=_catalog(skills)),
             messages=[{"role": "user", "content": f"<request>{prompt}</request>"}],
         )
-        text = "".join(getattr(b, "text", "") for b in msg.content)
-        return _parse_skill_choice(text, {s.name for s in skills})
+        return _parse_skill_choice(message_text(msg), {s.name for s in skills})
 
     return route
 
@@ -219,12 +222,11 @@ def llm_responder(model: str) -> ResponderFn:
     def respond(skill: Skill, prompt: str) -> str:
         msg = client.messages.create(
             model=model,
-            max_tokens=2000,
-            temperature=0.0,
+            max_tokens=MAX_TOKENS,
             system=skill.body,
             messages=[{"role": "user", "content": prompt}],
         )
-        return "".join(getattr(b, "text", "") for b in msg.content)
+        return message_text(msg)
 
     return respond
 
@@ -310,6 +312,13 @@ def run_skill_suites(
     if runs < 1:
         raise ValueError("runs must be >= 1")
     catalog = list(skills.values())
+    for suite in suites:
+        for tc in suite.trigger:
+            if tc.expect is not None and tc.expect not in skills:
+                raise SkillSuiteError(
+                    f"{suite.skill}/{tc.id}: expects skill {tc.expect!r}, which is not in the "
+                    f"skills directory (known: {', '.join(sorted(skills))})"
+                )
     results: list[SkillResult] = []
     for suite in suites:
         if on_progress:
@@ -322,7 +331,9 @@ def run_skill_suites(
             for r in range(runs):
                 got = router(catalog, tc.prompt)
                 case_runs.append(
-                    CaseRun(run=r, passed=got == tc.expect, detail=f"expected {tc.expect}, got {got}")
+                    CaseRun(
+                        run=r, passed=got == tc.expect, detail=f"expected {tc.expect}, got {got}"
+                    )
                 )
             cases.append(CaseResult(id=tc.id, kind="trigger", runs=case_runs))
 
@@ -360,12 +371,17 @@ def run_skill_suites(
                 ok = [(p, e) for p, e in zip(prompts, exec_results, strict=True) if not e.error]
                 for p, e in zip(prompts, exec_results, strict=True):
                     if e.error:
-                        per_case[p.id].append(CaseRun(run=r, passed=False, detail=f"error: {e.error}"))
+                        per_case[p.id].append(
+                            CaseRun(run=r, passed=False, detail=f"error: {e.error}")
+                        )
                 if ok:
-                    judgments = judge([p for p, _ in ok], [e for _, e in ok])
-                    for j in judgments:
-                        per_case[j.prompt_id].append(
+                    judged = {j.prompt_id: j for j in judge([p for p, _ in ok], [e for _, e in ok])}
+                    for p, _ in ok:
+                        j = judged.get(p.id)
+                        per_case[p.id].append(
                             CaseRun(run=r, passed=j.passed, detail=j.reasoning)
+                            if j is not None
+                            else CaseRun(run=r, passed=False, detail="error: no judgment returned")
                         )
             cases.extend(CaseResult(id=pid, kind="output", runs=rs) for pid, rs in per_case.items())
 
@@ -390,7 +406,7 @@ def run_skill_suites(
 
 class SkillComparison(BaseModel):
     skill: str
-    status: Literal["regressed", "improved", "unchanged", "new"]
+    status: Literal["regressed", "improved", "unchanged", "new", "missing"]
     base_rate: float | None = None
     head_rate: float
     delta: float | None = None
@@ -414,7 +430,7 @@ class SkillCompareResult(BaseModel):
 
     @property
     def regressions(self) -> list[SkillComparison]:
-        return [s for s in self.skills if s.status == "regressed"]
+        return [s for s in self.skills if s.status in ("regressed", "missing")]
 
 
 def _fingerprint_changes(base: Fingerprint, head: Fingerprint) -> list[str]:
@@ -453,8 +469,10 @@ def compare(
         newly_failing = [c.id for c in slipped if 2 * c.passed < len(c.runs)]
         newly_flaky = [c.id for c in slipped if 2 * c.passed >= len(c.runs)]
         dropped = -delta > max_drop or (delta < 0 and p < significance)
-        if dropped or (newly_failing and delta < 0):
-            status: Literal["regressed", "improved", "unchanged", "new"] = "regressed"
+        # A case that always passed and now fails most runs gates on its own: an equal
+        # improvement elsewhere must not hide it.
+        if dropped or newly_failing:
+            status: Literal["regressed", "improved", "unchanged", "new", "missing"] = "regressed"
         elif delta > max_drop and p < significance:
             status = "improved"
         else:
@@ -472,8 +490,18 @@ def compare(
                 newly_flaky=newly_flaky,
             )
         )
+    # A skill that was in the baseline and has no results now did not pass: its suite was
+    # deleted or renamed. That needs a deliberate --update-baseline, not a silent green.
+    seen = {c.skill for c in comparisons}
+    for base in baseline.skills if baseline else []:
+        if base.skill not in seen:
+            comparisons.append(
+                SkillComparison(
+                    skill=base.skill, status="missing", base_rate=base.pass_rate, head_rate=0.0
+                )
+            )
     return SkillCompareResult(
-        passed=not any(c.status == "regressed" for c in comparisons),
+        passed=not any(c.status in ("regressed", "missing") for c in comparisons),
         fingerprint_changes=_fingerprint_changes(baseline.fingerprint, head.fingerprint)
         if baseline
         else [],
@@ -518,7 +546,7 @@ def render_skills_markdown(result: SkillCompareResult) -> str:
         lines.append("")
 
     lines += ["| Skill | Base | Now | p |", "|---|---|---|---|"]
-    icon = {"regressed": "🔻", "improved": "🔺", "unchanged": "", "new": "🆕"}
+    icon = {"regressed": "🔻", "improved": "🔺", "unchanged": "", "new": "🆕", "missing": "❓"}
     for c in result.skills:
         p = "–" if c.p_value is None else f"{c.p_value:.2f}"
         edited = " ✎" if c.skill_changed else ""
@@ -527,12 +555,19 @@ def render_skills_markdown(result: SkillCompareResult) -> str:
         )
     lines.append("")
 
+    for c in result.skills:
+        if c.status == "missing":
+            lines.append(f"**{c.skill}** was in the baseline and has no results now.")
     for c in result.regressions:
         if c.newly_failing:
-            lines.append(f"**{c.skill}** newly failing: " + ", ".join(f"`{i}`" for i in c.newly_failing))
+            lines.append(
+                f"**{c.skill}** newly failing: " + ", ".join(f"`{i}`" for i in c.newly_failing)
+            )
     for c in result.skills:
         if c.newly_flaky:
-            lines.append(f"⚠️ **{c.skill}** newly flaky: " + ", ".join(f"`{i}`" for i in c.newly_flaky))
+            lines.append(
+                f"⚠️ **{c.skill}** newly flaky: " + ", ".join(f"`{i}`" for i in c.newly_flaky)
+            )
     failing = [
         (s.skill, case)
         for s in result.report.skills
@@ -543,9 +578,12 @@ def render_skills_markdown(result: SkillCompareResult) -> str:
         lines += ["", "<details><summary>Failing cases</summary>", ""]
         for skill, case in failing:
             reason = next((r.detail for r in case.runs if not r.passed), "")
-            reason = reason.replace("\n", " ")[:160]
+            # Model-written text goes into a PR comment: as inline code it cannot mention
+            # people, open HTML or close the details block.
+            reason = " ".join(reason.split())[:160].replace("`", "'")
+            shown = f" `{reason}`" if reason else ""
             lines.append(
-                f"- `{skill}/{case.id}` ({case.kind}, {case.passed}/{len(case.runs)}): {reason}"
+                f"- `{skill}/{case.id}` ({case.kind}, {case.passed}/{len(case.runs)}):{shown}"
             )
         lines += ["", "</details>"]
     return "\n".join(lines).rstrip() + "\n"

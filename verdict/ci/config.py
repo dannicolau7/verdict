@@ -40,6 +40,13 @@ class GateConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_pass_rate_drop: float = Field(default=0.05, ge=0.0, le=1.0)
+    max_error_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Fail when more than this share of either side's runs errored or "
+        "could not be judged: the comparison is not trustworthy then.",
+    )
     significance: float = Field(default=0.05, gt=0.0, le=1.0)
     cost_increase_max: float | None = Field(default=None, ge=0.0)
     latency_increase_max: float | None = Field(default=None, ge=0.0)

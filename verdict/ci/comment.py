@@ -59,7 +59,9 @@ def render_markdown(result: DiffResult) -> str:
     assert result.suite is not None
     suite = result.suite
     method = "Fisher's exact" if result.stats_method == "fisher" else "bootstrap"
-    if not result.gate.passed:
+    if result.incomplete:
+        head = "### ⚠️ Verdict: run incomplete, result not trustworthy"
+    elif not result.gate.passed:
         head = "### ❌ Verdict: regression detected"
     elif result.regressions:
         head = "### ⚠️ Verdict: gate passed, some cases regressed"
@@ -146,6 +148,10 @@ def render_markdown(result: DiffResult) -> str:
         lines.append(f"| Flaky cases | {suite.base.flaky_cases} | {suite.head.flaky_cases} | |")
     if suite.base.errors or suite.head.errors:
         lines.append(f"| Errors | {suite.base.errors} | {suite.head.errors} | |")
+    if suite.base.judge_errors or suite.head.judge_errors:
+        lines.append(
+            f"| Judge errors | {suite.base.judge_errors} | {suite.head.judge_errors} | |"
+        )
     lines.append("")
 
     passed_checks = [c for c in result.gate.checks if not c.breached]

@@ -51,6 +51,7 @@ class Outcome(BaseModel):
     reasoning: str = ""
     failure_mode: str | None = None
     error: str | None = None
+    judge_error: bool = False
     latency_ms: float = 0.0
     cost_usd: float | None = None
     n_steps: int | None = None
@@ -66,6 +67,7 @@ class SideStats(BaseModel):
     ci_low: float
     ci_high: float
     errors: int = 0
+    judge_errors: int = Field(default=0, description="Runs the judge could not score.")
     mean_latency_ms: float | None = None
     mean_cost_usd: float | None = None
     # Non-determinism (keys are k as strings). Per case: estimates from this case's runs.
@@ -149,6 +151,11 @@ class DiffResult(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
+    def incomplete(self) -> bool:
+        """Too many runs errored or went unjudged for the result to mean anything."""
+        return any(c.name == "run_errors" for c in self.gate.breaches)
+
+    @property
     def regressions(self) -> list[CaseDiff]:
         return [c for c in self.cases if c.status == "regressed"]
 
@@ -188,6 +195,7 @@ def _side_stats(outcomes: list[Outcome]) -> SideStats:
         ci_low=lo,
         ci_high=hi,
         errors=sum(1 for o in outcomes if o.error),
+        judge_errors=sum(1 for o in outcomes if o.judge_error),
         mean_latency_ms=sum(o.latency_ms for o in outcomes) / n if n else None,
         # Only report cost when every run reported it; a partial mean would mislead.
         mean_cost_usd=sum(costs) / n if n and len(costs) == n else None,
@@ -314,6 +322,23 @@ def analyze(
 
 def evaluate_gate(suite: SuiteDiff, cases: list[CaseDiff], gate: GateConfig) -> GateResult:
     checks: list[GateCheck] = []
+
+    # A comparison where many runs never ran or were never judged says nothing:
+    # fail it rather than let it pass (an exhausted API key fails every run).
+    for label, side in (("base", suite.base), ("head", suite.head)):
+        broken = side.errors + side.judge_errors
+        rate = broken / side.n if side.n else 1.0
+        if rate > gate.max_error_rate:
+            checks.append(
+                GateCheck(
+                    name="run_errors",
+                    breached=True,
+                    detail=(
+                        f"{label}: {broken} of {side.n} runs failed to run or be judged "
+                        f"(max {gate.max_error_rate:.0%}); the comparison is not trustworthy"
+                    ),
+                )
+            )
 
     drop = -suite.delta
     significant = suite.p_value < gate.significance
@@ -479,6 +504,11 @@ def judge_side(
                     reasoning=reasoning,
                     failure_mode=failure_mode,
                     error=res.error,
+                    judge_error=bool(
+                        res.error is None
+                        and not traj_errors
+                        and (j is None or j.metadata.get("judge_error"))
+                    ),
                     latency_ms=res.latency_ms,
                     cost_usd=res.estimated_cost_usd,
                     n_steps=traj.n_steps if traj and res.steps is not None else None,

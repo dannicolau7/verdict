@@ -7,14 +7,14 @@ models themselves (injection resistance, compliance, etc.).
 Usage (CLI)::
 
     verdict eval --target anthropic_llm --categories injection compliance \\
-                 --num-per-category 5 --judge-model claude-haiku-4-5-20251001
+                 --num-per-category 5 --judge-model claude-haiku-5-5
 
 Usage (Python)::
 
     from verdict.adapters.anthropic_llm import AnthropicLLMAdapter
     from verdict.agents.executor import execute_test_suite
 
-    adapter = AnthropicLLMAdapter(model="claude-haiku-4-5-20251001")
+    adapter = AnthropicLLMAdapter(model="claude-haiku-5-5")
     results = await execute_test_suite(prompts, adapter)
 """
 
@@ -24,6 +24,7 @@ import anthropic
 
 from verdict.adapters.base import TargetAdapter
 from verdict.config.settings import get_settings
+from verdict.llm import message_text
 from verdict.models.schemas import ExecutionResult
 
 
@@ -32,7 +33,7 @@ class AnthropicLLMAdapter(TargetAdapter):
 
     Args:
         model:       Claude model ID (default: settings.default_executor_model).
-        max_tokens:  Max tokens in the response (default: 1024).
+        max_tokens:  Max tokens in the response (default: 16000).
         system:      Optional system prompt to prepend (default: none).
         **kwargs:    Passed to TargetAdapter (cache_mode, cache_dir, etc.).
     """
@@ -40,7 +41,7 @@ class AnthropicLLMAdapter(TargetAdapter):
     def __init__(
         self,
         model: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int = 16000,
         system: str | None = None,
         **kwargs,
     ) -> None:
@@ -72,7 +73,7 @@ class AnthropicLLMAdapter(TargetAdapter):
 
         import asyncio
         response = await asyncio.to_thread(self._client.messages.create, **msg_kwargs)
-        text: str = response.content[0].text  # type: ignore[index]
+        text = message_text(response)
         tokens = (response.usage.input_tokens + response.usage.output_tokens
                   if response.usage else None)
         return self.make_result(prompt_id, text, token_count=tokens)

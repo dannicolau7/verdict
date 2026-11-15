@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+import verdict.ci.skills as skills_mod
 from verdict.ci.skills import (
     SKILLS_MARKER,
     SkillSuiteError,
@@ -59,10 +60,15 @@ def echo_responder(skill, prompt):
 def judge_by(predicate):
     def judge(prompts, results):
         return [
-            Judgment(prompt_id=r.prompt_id, passed=predicate(r.response), judge_model="fake",
-                     reasoning="fake judge decision for tests")
+            Judgment(
+                prompt_id=r.prompt_id,
+                passed=predicate(r.response),
+                judge_model="fake",
+                reasoning="fake judge decision for tests",
+            )
             for r in results
         ]
+
     return judge
 
 
@@ -71,12 +77,19 @@ GOOD_JUDGE = judge_by(lambda resp: "Jane" not in resp)
 
 def _run(ws, router=keyword_router, responder=echo_responder, judge=GOOD_JUDGE, runs=2):
     return run_skill_suites(
-        load_skills(ws / "skills"), load_skill_suites(ws / "tests"),
-        router=router, responder=responder, judge=judge, runs=runs, model="m", judge_model="j",
+        load_skills(ws / "skills"),
+        load_skill_suites(ws / "tests"),
+        router=router,
+        responder=responder,
+        judge=judge,
+        runs=runs,
+        model="m",
+        judge_model="j",
     )
 
 
 # ---------------------------------------------------------------- loading
+
 
 def test_load_skills_reads_frontmatter_and_hash(workspace):
     skills = load_skills(workspace / "skills")
@@ -119,6 +132,7 @@ def test_parse_skill_choice():
 
 # ---------------------------------------------------------------- running
 
+
 def test_run_all_pass(workspace):
     report = _run(workspace)
     s = report.get("redact")
@@ -160,6 +174,7 @@ def test_output_case_for_missing_skill_fails(tmp_path):
 
 
 # ---------------------------------------------------------------- comparing
+
 
 def test_no_baseline_is_new_and_passes(workspace):
     result = compare(_run(workspace), None)
@@ -237,6 +252,7 @@ def test_markdown_verdict_first(workspace):
 
 # ---------------------------------------------------------------- CLI
 
+
 def test_cli_baseline_then_regression(workspace, monkeypatch):
     import verdict.ci.diff as diff_mod
     import verdict.ci.skills as skills_mod
@@ -260,3 +276,96 @@ def test_cli_baseline_then_regression(workspace, monkeypatch):
     monkeypatch.setattr(diff_mod, "llm_judge", lambda model: judge_by(lambda r: False))
     bad = runner.invoke(main, args)
     assert bad.exit_code == 2, bad.output
+
+
+# ---- regressions found in review ----
+
+
+def _case(case_id: str, passes: int, n: int = 3) -> skills_mod.CaseResult:
+    runs = [skills_mod.CaseRun(run=r, passed=r < passes) for r in range(n)]
+    return skills_mod.CaseResult(id=case_id, kind="trigger", runs=runs)
+
+
+def _report(cases_by_skill: dict) -> skills_mod.SkillRunReport:
+    return skills_mod.SkillRunReport(
+        runs=3,
+        fingerprint=skills_mod.Fingerprint(),
+        skills=[skills_mod._summarize(n, "sha", c) for n, c in cases_by_skill.items()],
+    )
+
+
+def test_a_newly_failing_case_gates_even_when_another_case_improves():
+    base = _report({"s": [_case("a", 3), _case("b", 0)]})
+    head = _report({"s": [_case("a", 0), _case("b", 3)]})  # same pass rate overall
+    result = skills_mod.compare(head, base)
+    assert not result.passed
+    assert result.skills[0].status == "regressed" and result.skills[0].newly_failing == ["a"]
+
+
+def test_a_skill_that_vanished_from_the_run_fails_the_gate():
+    base = _report({"kept": [_case("a", 3)], "gone": [_case("b", 3)]})
+    head = _report({"kept": [_case("a", 3)]})
+    result = skills_mod.compare(head, base)
+    assert not result.passed
+    assert {c.skill: c.status for c in result.skills} == {"kept": "unchanged", "gone": "missing"}
+    assert "**gone** was in the baseline and has no results now." in (
+        skills_mod.render_skills_markdown(result)
+    )
+
+
+def test_a_judgment_that_never_comes_back_is_a_failed_run():
+    skill = skills_mod.Skill(name="s", description="d", body="b", sha="x")
+    suite = skills_mod.SkillSuite(
+        skill="s",
+        output=[
+            skills_mod.OutputCase(id="o1", prompt="p", expected_behavior="e"),
+            skills_mod.OutputCase(id="o2", prompt="p", expected_behavior="e"),
+        ],
+    )
+    report = skills_mod.run_skill_suites(
+        {"s": skill},
+        [suite],
+        router=lambda catalog, prompt: None,
+        responder=lambda sk, prompt: "answer",
+        judge=lambda prompts, results: [],  # the judge returns nothing at all
+        runs=3,
+    )
+    result = report.skills[0]
+    assert result.n == 6 and result.passed == 0
+    assert all(r.detail == "error: no judgment returned" for c in result.cases for r in c.runs)
+
+
+def test_a_trigger_case_expecting_an_unknown_skill_is_an_error():
+    skill = skills_mod.Skill(name="real", description="d", body="b", sha="x")
+    suite = skills_mod.SkillSuite(
+        skill="real", trigger=[skills_mod.TriggerCase(id="t", prompt="p", expect="reel")]
+    )
+    with pytest.raises(skills_mod.SkillSuiteError, match="expects skill 'reel'"):
+        skills_mod.run_skill_suites(
+            {"real": skill},
+            [suite],
+            router=lambda c, p: None,
+            responder=lambda s, p: "",
+            judge=lambda p, r: [],
+        )
+
+
+def test_model_text_in_the_pr_comment_cannot_mention_people_or_break_out():
+    nasty = "@everyone </details> `rm -rf`\n<img src=x>"
+    case = skills_mod.CaseResult(
+        id="c", kind="output", runs=[skills_mod.CaseRun(run=0, passed=False, detail=nasty)]
+    )
+    head = _report({"s": [case]})
+    md = skills_mod.render_skills_markdown(skills_mod.compare(head, None))
+    line = next(ln for ln in md.splitlines() if ln.startswith("- `s/c`"))
+    assert line.endswith("`@everyone </details> 'rm -rf' <img src=x>`")
+    assert md.count("</details>") == 2  # the injected one is inside inline code; ours closes
+
+
+def test_model_calls_send_no_sampling_parameters():
+    """Current models reject `temperature` with a 400 and think before answering."""
+    import inspect
+
+    source = inspect.getsource(skills_mod.llm_router) + inspect.getsource(skills_mod.llm_responder)
+    assert "temperature" not in source and "message_text(" in source
+    assert skills_mod.MAX_TOKENS >= 16000

@@ -15,6 +15,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exact against the baseline, `--max-drop`, newly failing vs newly flaky cases, and a
   fingerprint of model, judge, version and SKILL.md hashes. Exits 2 on regression;
   writes `verdict-skills.md` (PR comment) and `verdict-skills.json`.
+  A case that always passed and now fails most runs gates on its own, a skill that was in
+  the baseline and has no results now fails the gate, and a judgment that never comes
+  back counts as a failed run.
+
+## [0.8.1] — 2026-10-30
+
+### Fixed
+
+- **`verdict diff` no longer passes when runs fail.** A new `run_errors` gate check
+  (`gate.max_error_rate`, default 5%) fails the gate when too many runs on either side
+  errored or could not be judged. Before, a run where every call failed (for example
+  an exhausted API key) reported 0% → 0% and "Gate passed". Judge errors are now
+  counted per side and shown in the PR comment, whose headline says the run is
+  incomplete instead of claiming a result.
+- **Works with current Claude models.** Responses are read by block type, not
+  `content[0]`: current models think by default, so the first block can be a thinking
+  block and every judgment came back as a judge error. No sampling parameters
+  (`temperature`) are sent, since current models reject them with a 400. `max_tokens`
+  raised to 16000 so thinking doesn't truncate answers.
+- Default models move to the current generation of the same tier: Sonnet 4.6 →
+  `claude-sonnet-5-5` (generator, judge, reporter), Haiku 4.5 → `claude-haiku-5-5`
+  (executor).
+- Pricing table: current models added (Fable 5/5.1, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5,
+  Haiku 5.5); Opus 4.6 and Haiku 4.5 prices corrected.
 
 ## [0.8.0] — 2026-10-26
 

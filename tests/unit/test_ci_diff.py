@@ -201,3 +201,54 @@ def test_no_power_warning_when_suite_is_big_enough():
     r = _result(cases, base, base, gate=GateConfig(max_pass_rate_drop=0.10))
     assert r.suite.min_detectable_drop < 0.10
     assert not any(c.name == "power" for c in r.gate.checks)
+
+
+def _errored(case_id: str, runs: int = 10) -> list[Outcome]:
+    return [Outcome(case_id=case_id, run=i, passed=False, error="RuntimeError: credit balance too low")
+            for i in range(runs)]
+
+
+def test_all_runs_erroring_fails_the_gate_instead_of_passing():
+    # Seen live: an exhausted API key failed every run, and the gate said "passed"
+    # because 0% -> 0% is no drop.
+    cases = [_case(c) for c in "ab"]
+    base = [o for c in "ab" for o in _errored(c)]
+    head = [o for c in "ab" for o in _errored(c)]
+    r = _result(cases, base, head)
+    assert not r.gate.passed and r.incomplete
+    errs = [c for c in r.gate.breaches if c.name == "run_errors"]
+    assert [c.detail.split(":")[0] for c in errs] == ["base", "head"]
+    assert "20 of 20 runs failed to run or be judged" in errs[0].detail
+    md = render_markdown(r)
+    assert "run incomplete, result not trustworthy" in md and "regression detected" not in md
+
+
+def test_judge_errors_count_as_broken_runs():
+    cases = [_case("a")]
+    base = _outcomes("a", 10)
+    head = [Outcome(case_id="a", run=i, passed=False, judge_error=i < 3) for i in range(10)]
+    r = _result(cases, base, head)
+    assert r.suite.head.judge_errors == 3 and r.incomplete
+    assert "| Judge errors | 0 | 3 | |" in render_markdown(r)
+
+
+def test_a_few_errors_under_the_limit_do_not_block():
+    cases = [_case(c) for c in "abcdefghij"]
+    base = [o for c in "abcdefghij" for o in _outcomes(c, 10)]
+    head = _errored("a", 3) + _outcomes("a", 10)[3:] + [o for c in "bcdefghij" for o in _outcomes(c, 10)]
+    r = _result(cases, base, head)  # 3 of 100 = 3% <= 5%
+    assert not r.incomplete
+    assert r.suite.head.errors == 3
+
+
+def test_judge_side_marks_judge_errors():
+    cases = [_case("a")]
+    runs = [[ExecutionResult(prompt_id="a", response="ok", latency_ms=5)]]
+
+    def failing_judge(prompts, results):
+        return [Judgment(prompt_id=p.id, passed=False, judge_model="fake",
+                         reasoning="Judge failed to produce valid output: overloaded",
+                         metadata={"judge_error": True}) for p in prompts]
+
+    [o] = judge_side(cases, runs, failing_judge)
+    assert o.judge_error and not o.passed and o.error is None

@@ -5,7 +5,7 @@ Settings are loaded from environment variables and/or a .env file in the working
 Override via .env file:
     Create a `.env` file next to your project root:
         ANTHROPIC_API_KEY=sk-ant-...
-        DEFAULT_JUDGE_MODEL=claude-opus-4-6
+        DEFAULT_JUDGE_MODEL=claude-opus-5-5
         MAX_CONCURRENT_EXECUTIONS=10
 
 Override via direct env vars (takes precedence over .env):
@@ -54,16 +54,16 @@ class Settings(BaseSettings):
     # Model selection (defaults — all overridable via env)                #
     # ------------------------------------------------------------------ #
 
-    default_generator_model: str = "claude-sonnet-4-6"
+    default_generator_model: str = "claude-sonnet-5-5"
     """Model used by the Test Generator agent to produce adversarial prompts."""
 
-    default_executor_model: str = "claude-haiku-4-5-20251001"
+    default_executor_model: str = "claude-haiku-5-5"
     """Model used by the Executor agent to run prompts against the target system."""
 
-    default_judge_model: str = "claude-sonnet-4-6"
+    default_judge_model: str = "claude-sonnet-5-5"
     """Model used by the Judge agent to evaluate target system responses."""
 
-    default_reporter_model: str = "claude-sonnet-4-6"
+    default_reporter_model: str = "claude-sonnet-5-5"
     """Model used by the Reporter agent to produce the EvalReport."""
 
     # ------------------------------------------------------------------ #

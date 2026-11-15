@@ -25,6 +25,7 @@ import anthropic
 
 from verdict.adapters.base import TargetAdapter
 from verdict.config.settings import get_settings
+from verdict.llm import message_text
 from verdict.models.schemas import ExecutionResult
 
 # ---------------------------------------------------------------------------
@@ -189,11 +190,11 @@ class SimpleRAGAdapter(TargetAdapter):
         model_id = self._response_model or settings.default_executor_model
         message = client.messages.create(
             model=model_id,
-            max_tokens=1024,
+            max_tokens=16000,
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
-        response_text: str = message.content[0].text  # type: ignore[index]
+        response_text = message_text(message)
         input_tokens: int = message.usage.input_tokens
         output_tokens: int = message.usage.output_tokens
         token_count: int = input_tokens + output_tokens
